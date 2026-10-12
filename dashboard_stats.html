@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <script src="auth-check.js"></script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>สรุปยอดผู้ใช้บริการ (Dashboard)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+</head>
+<body class="bg-slate-950 text-white min-h-screen font-sans">
+
+    <!-- Header -->
+    <div class="bg-slate-900 border-b border-slate-800 px-6 py-4 flex flex-wrap items-center justify-between gap-3">
+        <h1 class="text-2xl font-black text-blue-400 flex items-center gap-3">📊 สรุปยอดผู้ใช้บริการ</h1>
+        <div class="flex items-center gap-2">
+            <input type="date" id="date-picker" class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white text-sm">
+            <button onclick="loadStats()" class="bg-blue-600 hover:bg-blue-500 text-white font-bold px-4 py-2 rounded-lg text-sm">
+                <i class="fa-solid fa-magnifying-glass"></i> ดูข้อมูล
+            </button>
+            <button onclick="setToday()" class="bg-slate-700 hover:bg-slate-600 text-white font-bold px-4 py-2 rounded-lg text-sm">
+                วันนี้
+            </button>
+            <button onclick="exportExcel()" class="bg-emerald-700 hover:bg-emerald-600 text-white font-bold px-4 py-2 rounded-lg text-sm">
+                <i class="fa-solid fa-file-excel"></i> Excel
+            </button>
+            <button onclick="exportPDF()" class="bg-rose-700 hover:bg-rose-600 text-white font-bold px-4 py-2 rounded-lg text-sm">
+                <i class="fa-solid fa-file-pdf"></i> PDF
+            </button>
+        </div>
+    </div>
+
+    <div class="max-w-7xl mx-auto p-6">
+
+        <!-- 🚨 แจ้งเตือนคนไข้รอเกินเวลา (อัปเดตสด ไม่ขึ้นกับวันที่ที่เลือกดูสถิติด้านล่าง) -->
+        <div id="overdue-panel" class="mb-6 hidden bg-red-950/40 border-2 border-red-600 rounded-2xl p-5">
+            <div class="flex items-center justify-between mb-3">
+                <p class="text-red-300 font-black text-lg flex items-center gap-2">
+                    🚨 คนไข้รอเกินเวลาที่กำหนด (<span id="overdue-count">0</span> คน)
+                </p>
+                <p class="text-xs text-slate-500">อัปเดตทุก 30 วินาที</p>
+            </div>
+            <div id="overdue-list" class="space-y-2"></div>
+        </div>
+        <div id="overdue-ok" class="hidden mb-6 bg-emerald-950/30 border border-emerald-700 rounded-xl p-3 text-emerald-300 text-sm font-bold text-center">
+            ✅ ไม่มีคนไข้รอเกินเวลาที่กำหนดในขณะนี้
+        </div>
+
+        <p id="loading-box" class="text-center text-slate-500 py-10">
+            <i class="fa-solid fa-spinner animate-spin mr-2"></i> กำลังโหลดข้อมูล...
+        </p>
+        <p id="error-box" class="hidden text-center bg-red-900/40 border border-red-600 text-red-200 rounded-xl p-4"></p>
+
+        <div id="dashboard-content" class="hidden space-y-6">
+
+            <!-- แถวการ์ดสรุปยอดรวม -->
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div class="bg-gradient-to-br from-blue-600/20 to-blue-900/20 border border-blue-500/40 rounded-2xl p-6">
+                    <p class="text-sm text-blue-300 font-bold mb-1">คนไข้ทั้งหมดวันนี้</p>
+                    <p id="stat-total" class="text-5xl font-black text-white">0</p>
+                    <p class="text-xs text-slate-400 mt-1">คน</p>
+                </div>
+                <div class="bg-gradient-to-br from-amber-600/20 to-amber-900/20 border border-amber-500/40 rounded-2xl p-6">
+                    <p class="text-sm text-amber-300 font-bold mb-1">🚶 Walk-in</p>
+                    <p id="stat-walkin" class="text-5xl font-black text-white">0</p>
+                    <p class="text-xs text-slate-400 mt-1">คน</p>
+                </div>
+                <div class="bg-gradient-to-br from-purple-600/20 to-purple-900/20 border border-purple-500/40 rounded-2xl p-6">
+                    <p class="text-sm text-purple-300 font-bold mb-1">📅 มีนัดหมาย</p>
+                    <p id="stat-appointment" class="text-5xl font-black text-white">0</p>
+                    <p class="text-xs text-slate-400 mt-1">คน</p>
+                </div>
+                <div class="bg-gradient-to-br from-teal-600/20 to-teal-900/20 border border-teal-500/40 rounded-2xl p-6">
+                    <p class="text-sm text-teal-300 font-bold mb-1">🚐 หน่วยเคลื่อนที่</p>
+                    <p id="stat-mobile" class="text-5xl font-black text-white">0</p>
+                    <p class="text-xs text-slate-400 mt-1">คน</p>
+                </div>
+            </div>
+
+            <!-- กราฟยอดแต่ละจุด + กราฟรายชั่วโมง -->
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5">
+                    <p class="text-sm font-bold text-slate-300 mb-3">📍 ยอดให้บริการเสร็จแล้ว แยกตามจุด</p>
+                    <canvas id="chart-stations" height="260"></canvas>
+                </div>
+                <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5">
+                    <p class="text-sm font-bold text-slate-300 mb-3">🕐 แนวโน้มลงทะเบียนตลอดวัน (แยกตามชั่วโมง)</p>
+                    <canvas id="chart-hourly" height="260"></canvas>
+                </div>
+            </div>
+
+            <!-- ตารางรายละเอียดแต่ละจุด -->
+            <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5">
+                <p class="text-sm font-bold text-slate-300 mb-3">รายละเอียดแต่ละจุดบริการ</p>
+                <div id="station-table" class="space-y-2"></div>
+            </div>
+
+            <!-- 📈 เปรียบเทียบสถิติหลายวัน -->
+            <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5">
+                <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+                    <p class="text-sm font-bold text-slate-300">📈 เปรียบเทียบยอดหลายวัน</p>
+                    <div class="flex items-center gap-2 text-xs">
+                        <label class="text-slate-400">จาก</label>
+                        <input type="date" id="range-start" class="bg-slate-800 border border-slate-700 rounded-lg px-2 py-1.5 text-white">
+                        <label class="text-slate-400">ถึง</label>
+                        <input type="date" id="range-end" class="bg-slate-800 border border-slate-700 rounded-lg px-2 py-1.5 text-white">
+                        <button onclick="loadRangeComparison()" class="bg-blue-600 hover:bg-blue-500 text-white font-bold px-3 py-1.5 rounded-lg">
+                            ดูกราฟ
+                        </button>
+                        <button onclick="setLast7Days()" class="bg-slate-700 hover:bg-slate-600 text-white font-bold px-3 py-1.5 rounded-lg">
+                            7 วันล่าสุด
+                        </button>
+                        <button onclick="setLast30Days()" class="bg-slate-700 hover:bg-slate-600 text-white font-bold px-3 py-1.5 rounded-lg">
+                            30 วันล่าสุด
+                        </button>
+                    </div>
+                </div>
+                <canvas id="chart-range" height="220"></canvas>
+            </div>
+
+        </div>
+    </div>
+
+    <script>
+        const serverIP = "10.121.111.233";
+        let chartStations = null;
+        let chartHourly = null;
+        let chartRange = null;
+        let lastLoadedStats = null; // เก็บข้อมูลล่าสุดไว้ใช้ export
+
+        const STATION_COLORS = {
+            VitalSign: "#2dd4bf", Blood: "#fb923c", Eye: "#c084fc", Ear: "#fbbf24",
+            Lung: "#22d3ee", EKG: "#818cf8", XRay: "#fb7185", Doctor: "#f472b6", Cashier: "#4ade80"
+        };
+
+        function setToday() {
+            const today = new Date().toISOString().split('T')[0];
+            document.getElementById("date-picker").value = today;
+            loadStats();
+        }
+
+        async function loadStats() {
+            const dateVal = document.getElementById("date-picker").value;
+            const loadingBox = document.getElementById("loading-box");
+            const errorBox = document.getElementById("error-box");
+            const content = document.getElementById("dashboard-content");
+
+            loadingBox.classList.remove("hidden");
+            errorBox.classList.add("hidden");
+            content.classList.add("hidden");
+
+            try {
+                const res = await fetch(`http://${serverIP}:8000/api/stats?date=${dateVal}`);
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                const data = await res.json();
+
+                renderStats(data);
+                lastLoadedStats = data;
+                loadingBox.classList.add("hidden");
+                content.classList.remove("hidden");
+            } catch (err) {
+                console.error(err);
+                loadingBox.classList.add("hidden");
+                errorBox.innerText = `⚠️ โหลดข้อมูลไม่สำเร็จ: ${err.message}`;
+                errorBox.classList.remove("hidden");
+            }
+        }
+
+        function renderStats(data) {
+            document.getElementById("stat-total").innerText = data.total_patients.toLocaleString();
+            document.getElementById("stat-walkin").innerText = data.walkin_count.toLocaleString();
+            document.getElementById("stat-appointment").innerText = data.appointment_count.toLocaleString();
+            document.getElementById("stat-mobile").innerText = (data.mobile_count || 0).toLocaleString();
+
+            // กราฟแท่ง: ยอดแต่ละจุด
+            const stationLabels = data.by_station.map(s => s.label);
+            const stationValues = data.by_station.map(s => s.completed);
+            const stationColors = data.by_station.map(s => STATION_COLORS[s.station] || "#94a3b8");
+
+            if (chartStations) chartStations.destroy();
+            chartStations = new Chart(document.getElementById("chart-stations"), {
+                type: 'bar',
+                data: {
+                    labels: stationLabels,
+                    datasets: [{
+                        data: stationValues,
+                        backgroundColor: stationColors,
+                        borderRadius: 6
+                    }]
+                },
+                options: {
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        x: { ticks: { color: '#cbd5e1' }, grid: { color: '#1e293b' } },
+                        y: { ticks: { color: '#cbd5e1', precision: 0 }, grid: { color: '#1e293b' } }
+                    }
+                }
+            });
+
+            // กราฟเส้น: แนวโน้มรายชั่วโมง
+            const hours = Object.keys(data.hourly);
+            const hourlyValues = Object.values(data.hourly);
+
+            if (chartHourly) chartHourly.destroy();
+            chartHourly = new Chart(document.getElementById("chart-hourly"), {
+                type: 'line',
+                data: {
+                    labels: hours.map(h => `${h}:00`),
+                    datasets: [{
+                        data: hourlyValues,
+                        borderColor: '#60a5fa',
+                        backgroundColor: 'rgba(96,165,250,0.15)',
+                        fill: true,
+                        tension: 0.3,
+                        pointRadius: 2
+                    }]
+                },
+                options: {
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        x: { ticks: { color: '#cbd5e1', maxRotation: 0 }, grid: { color: '#1e293b' } },
+                        y: { ticks: { color: '#cbd5e1', precision: 0 }, grid: { color: '#1e293b' } }
+                    }
+                }
+            });
+
+            // ตารางรายละเอียด
+            const tableEl = document.getElementById("station-table");
+            const maxVal = Math.max(...stationValues, 1);
+            tableEl.innerHTML = data.by_station.map(s => {
+                const pct = Math.round((s.completed / maxVal) * 100);
+                const color = STATION_COLORS[s.station] || "#94a3b8";
+                return `
+                    <div class="flex items-center gap-3">
+                        <span class="w-32 text-sm text-slate-300 font-bold truncate">${s.label}</span>
+                        <div class="flex-1 bg-slate-800 rounded-full h-4 overflow-hidden">
+                            <div class="h-full rounded-full" style="width:${pct}%; background:${color}"></div>
+                        </div>
+                        <span class="w-14 text-right text-sm font-bold text-white">${s.completed}</span>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        // 🚨 คนไข้รอเกินเวลา — ดึงข้อมูลสดทุก 30 วินาที ไม่ขึ้นกับวันที่ที่เลือกดูสถิติ (เช็คแค่ตอนนี้เท่านั้น)
+        async function loadOverdueAlerts() {
+            try {
+                const res = await fetch(`http://${serverIP}:8000/api/overdue-alerts`);
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                const data = await res.json();
+
+                const panel = document.getElementById("overdue-panel");
+                const okBox = document.getElementById("overdue-ok");
+                const listEl = document.getElementById("overdue-list");
+                const countEl = document.getElementById("overdue-count");
+
+                if (data.count === 0) {
+                    panel.classList.add("hidden");
+                    okBox.classList.remove("hidden");
+                    return;
+                }
+
+                okBox.classList.add("hidden");
+                panel.classList.remove("hidden");
+                countEl.innerText = data.count;
+
+                listEl.innerHTML = data.overdue.map(item => `
+                    <div class="flex items-center justify-between bg-red-900/30 border border-red-700/50 rounded-lg px-4 py-2.5">
+                        <div class="flex items-center gap-3">
+                            <span class="font-mono font-black text-white text-lg">${item.queue_number}</span>
+                            <span class="text-sm text-slate-300">${item.patient_name || ''}</span>
+                            <span class="text-xs bg-red-800/50 text-red-200 px-2 py-0.5 rounded-full font-bold">${item.label}</span>
+                        </div>
+                        <div class="text-right">
+                            <span class="text-red-300 font-black">${item.elapsed_minutes} นาที</span>
+                            <span class="text-xs text-slate-500 block">(เกณฑ์ ${item.threshold_minutes} นาที)</span>
+                        </div>
+                    </div>
+                `).join('');
+            } catch (err) {
+                console.error("โหลดข้อมูลแจ้งเตือนไม่สำเร็จ:", err);
+            }
+        }
+
+        loadOverdueAlerts();
+        setInterval(loadOverdueAlerts, 30000);
+
+        // ==========================================================
+        // 📥 Export Excel / PDF — ใช้ข้อมูลที่โหลดล่าสุด (lastLoadedStats)
+        // ==========================================================
+        function exportExcel() {
+            if (!lastLoadedStats) {
+                alert("กรุณาโหลดข้อมูลก่อน (กดปุ่ม 'ดูข้อมูล')");
+                return;
+            }
+            const data = lastLoadedStats;
+
+            const summarySheet = XLSX.utils.json_to_sheet([
+                { หัวข้อ: "วันที่", ค่า: data.date },
+                { หัวข้อ: "คนไข้ทั้งหมด", ค่า: data.total_patients },
+                { หัวข้อ: "Walk-in", ค่า: data.walkin_count },
+                { หัวข้อ: "มีนัดหมาย", ค่า: data.appointment_count },
+                { หัวข้อ: "หน่วยเคลื่อนที่", ค่า: data.mobile_count || 0 },
+            ]);
+
+            const stationSheet = XLSX.utils.json_to_sheet(
+                data.by_station.map(s => ({ "จุดบริการ": s.label, "จำนวนที่เสร็จแล้ว": s.completed }))
+            );
+
+            const hourlySheet = XLSX.utils.json_to_sheet(
+                Object.entries(data.hourly).map(([hr, cnt]) => ({ "ชั่วโมง": `${hr}:00`, "จำนวนลงทะเบียน": cnt }))
+            );
+
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, summarySheet, "สรุปยอดรวม");
+            XLSX.utils.book_append_sheet(wb, stationSheet, "ยอดแต่ละจุด");
+            XLSX.utils.book_append_sheet(wb, hourlySheet, "รายชั่วโมง");
+
+            XLSX.writeFile(wb, `สรุปยอดผู้ใช้บริการ_${data.date}.xlsx`);
+        }
+
+        function exportPDF() {
+            if (!lastLoadedStats) {
+                alert("กรุณาโหลดข้อมูลก่อน (กดปุ่ม 'ดูข้อมูล')");
+                return;
+            }
+            const data = lastLoadedStats;
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF();
+
+            doc.setFontSize(16);
+            doc.text(`Patient Service Summary - ${data.date}`, 14, 18);
+
+            doc.setFontSize(11);
+            doc.text(`Total Patients: ${data.total_patients}`, 14, 28);
+            doc.text(`Walk-in: ${data.walkin_count}   Appointment: ${data.appointment_count}   Mobile: ${data.mobile_count || 0}`, 14, 35);
+
+            doc.autoTable({
+                startY: 44,
+                head: [["Station", "Completed"]],
+                body: data.by_station.map(s => [s.station, s.completed]),
+            });
+
+            doc.save(`stats_${data.date}.pdf`);
+        }
+
+        // ==========================================================
+        // 📈 เปรียบเทียบสถิติหลายวัน
+        // ==========================================================
+        function formatDateInput(d) {
+            return d.toISOString().split('T')[0];
+        }
+
+        function setLast7Days() {
+            const end = new Date();
+            const start = new Date();
+            start.setDate(start.getDate() - 6);
+            document.getElementById("range-start").value = formatDateInput(start);
+            document.getElementById("range-end").value = formatDateInput(end);
+            loadRangeComparison();
+        }
+
+        function setLast30Days() {
+            const end = new Date();
+            const start = new Date();
+            start.setDate(start.getDate() - 29);
+            document.getElementById("range-start").value = formatDateInput(start);
+            document.getElementById("range-end").value = formatDateInput(end);
+            loadRangeComparison();
+        }
+
+        async function loadRangeComparison() {
+            const startVal = document.getElementById("range-start").value;
+            const endVal = document.getElementById("range-end").value;
+            if (!startVal || !endVal) return;
+
+            try {
+                const res = await fetch(`http://${serverIP}:8000/api/stats-range?start_date=${startVal}&end_date=${endVal}`);
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                const data = await res.json();
+
+                const labels = data.days.map(d => d.date);
+                const totals = data.days.map(d => d.total);
+                const walkins = data.days.map(d => d.walkin);
+                const appointments = data.days.map(d => d.appointment);
+                const mobiles = data.days.map(d => d.mobile || 0);
+
+                if (chartRange) chartRange.destroy();
+                chartRange = new Chart(document.getElementById("chart-range"), {
+                    type: 'bar',
+                    data: {
+                        labels,
+                        datasets: [
+                            { label: 'Walk-in', data: walkins, backgroundColor: '#fbbf24', stack: 'a' },
+                            { label: 'นัดหมาย', data: appointments, backgroundColor: '#a78bfa', stack: 'a' },
+                            { label: 'หน่วยเคลื่อนที่', data: mobiles, backgroundColor: '#2dd4bf', stack: 'a' },
+                        ]
+                    },
+                    options: {
+                        plugins: { legend: { labels: { color: '#cbd5e1' } } },
+                        scales: {
+                            x: { ticks: { color: '#cbd5e1' }, grid: { color: '#1e293b' } },
+                            y: { ticks: { color: '#cbd5e1', precision: 0 }, grid: { color: '#1e293b' }, stacked: true },
+                        }
+                    }
+                });
+            } catch (err) {
+                console.error("โหลดข้อมูลเปรียบเทียบไม่สำเร็จ:", err);
+            }
+        }
+
+        setToday();
+        setLast7Days();
+    </script>
+</body>
+</html>

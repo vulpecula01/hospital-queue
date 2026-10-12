@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <script src="auth-check.js"></script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ประวัติการใช้งาน (Audit Log)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+</head>
+<body class="bg-slate-900 text-white min-h-screen p-6">
+
+    <div class="max-w-5xl mx-auto">
+
+        <div class="text-center mb-6">
+            <h1 class="text-3xl font-black text-blue-400">📜 ประวัติการใช้งาน (Audit Log)</h1>
+            <p class="text-slate-400 text-sm mt-1">เฉพาะผู้ดูแลระบบ (Admin) เท่านั้น</p>
+        </div>
+
+        <div id="access-denied" class="hidden bg-red-950/40 border-2 border-red-600 rounded-2xl p-6 text-center">
+            <p class="text-red-300 font-bold text-lg">🚫 หน้านี้สำหรับผู้ดูแลระบบ (Admin) เท่านั้น</p>
+        </div>
+
+        <div id="main-content" class="hidden">
+
+            <!-- ตัวกรอง -->
+            <div class="bg-slate-800 border border-slate-700 rounded-2xl p-4 mb-5 flex flex-wrap items-end gap-3">
+                <div>
+                    <label class="block text-xs text-slate-400 mb-1">วันที่</label>
+                    <input type="date" id="filter-date" class="bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white text-sm">
+                </div>
+                <div>
+                    <label class="block text-xs text-slate-400 mb-1">ชื่อผู้ใช้</label>
+                    <input type="text" id="filter-username" placeholder="ทั้งหมด" class="bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white text-sm w-32">
+                </div>
+                <div>
+                    <label class="block text-xs text-slate-400 mb-1">ประเภทการกระทำ</label>
+                    <select id="filter-action" class="bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white text-sm">
+                        <option value="">ทั้งหมด</option>
+                    </select>
+                </div>
+                <button onclick="loadLogs()" class="bg-blue-600 hover:bg-blue-500 text-white font-bold px-4 py-2 rounded-lg text-sm">
+                    <i class="fa-solid fa-magnifying-glass"></i> ค้นหา
+                </button>
+                <button onclick="clearFilters()" class="bg-slate-700 hover:bg-slate-600 text-white font-bold px-4 py-2 rounded-lg text-sm">
+                    ล้างตัวกรอง
+                </button>
+            </div>
+
+            <div class="bg-slate-800 border border-slate-700 rounded-2xl overflow-hidden">
+                <table class="w-full text-left text-sm">
+                    <thead class="bg-slate-900 text-slate-400">
+                        <tr>
+                            <th class="p-3">เวลา</th>
+                            <th class="p-3">ผู้ใช้งาน</th>
+                            <th class="p-3">การกระทำ</th>
+                            <th class="p-3">รายละเอียด</th>
+                        </tr>
+                    </thead>
+                    <tbody id="log-rows" class="divide-y divide-slate-700"></tbody>
+                </table>
+            </div>
+            <p id="log-count" class="text-xs text-slate-500 mt-2"></p>
+
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = window.location.origin;
+
+        const ACTION_LABELS = {
+            "login": "🔓 เข้าสู่ระบบ", "logout": "🔒 ออกจากระบบ",
+            "call-queue": "🔊 เรียกคิว", "hold-queue": "⏸️ พักคิว", "finish-queue": "✅ ตรวจเสร็จ",
+            "mark-noshow": "🚫 ทำเครื่องหมายไม่มา", "update-settings": "⚙️ แก้ไขตั้งค่า",
+            "toggle-room": "🚪 เปิด/ปิดห้อง", "change-password": "🔑 เปลี่ยนรหัสผ่าน",
+            "xray-bulk-import": "📥 นำเข้านัด X-Ray", "xray-confirm-arrival": "✅ ยืนยันมาถึง (X-Ray)",
+            "xray-walkin": "🚶 Walk-in X-Ray",
+        };
+
+        async function checkAdminAccess() {
+            try {
+                const res = await fetch(`${API_BASE}/api/audit-log?limit=1`, { credentials: 'include' });
+                if (!res.ok) {
+                    document.getElementById("access-denied").classList.remove("hidden");
+                    return false;
+                }
+                document.getElementById("main-content").classList.remove("hidden");
+                return true;
+            } catch (err) {
+                document.getElementById("access-denied").classList.remove("hidden");
+                return false;
+            }
+        }
+
+        function clearFilters() {
+            document.getElementById("filter-date").value = "";
+            document.getElementById("filter-username").value = "";
+            document.getElementById("filter-action").value = "";
+            loadLogs();
+        }
+
+        async function loadLogs() {
+            const date = document.getElementById("filter-date").value;
+            const username = document.getElementById("filter-username").value.trim();
+            const action = document.getElementById("filter-action").value;
+
+            const params = new URLSearchParams();
+            if (date) params.set("date", date);
+            if (username) params.set("username", username);
+            if (action) params.set("action", action);
+            params.set("limit", "300");
+
+            try {
+                const res = await fetch(`${API_BASE}/api/audit-log?${params.toString()}`, { credentials: 'include' });
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                const data = await res.json();
+
+                // เติมตัวเลือก dropdown ประเภทการกระทำ (ครั้งแรกเท่านั้น)
+                const actionSelect = document.getElementById("filter-action");
+                if (actionSelect.children.length === 1) {
+                    data.available_actions.forEach(a => {
+                        const opt = document.createElement("option");
+                        opt.value = a;
+                        opt.innerText = ACTION_LABELS[a] || a;
+                        actionSelect.appendChild(opt);
+                    });
+                }
+
+                const rowsEl = document.getElementById("log-rows");
+                if (data.logs.length === 0) {
+                    rowsEl.innerHTML = `<tr><td colspan="4" class="p-8 text-center text-slate-500">ไม่พบรายการ</td></tr>`;
+                } else {
+                    rowsEl.innerHTML = data.logs.map(log => `
+                        <tr class="hover:bg-slate-700/30">
+                            <td class="p-3 text-slate-400 font-mono text-xs">${log.created_at_str}</td>
+                            <td class="p-3 font-bold">${log.username || '-'}</td>
+                            <td class="p-3">${ACTION_LABELS[log.action] || log.action}</td>
+                            <td class="p-3 text-slate-400 text-xs">${log.detail || '-'}</td>
+                        </tr>
+                    `).join('');
+                }
+
+                document.getElementById("log-count").innerText = `แสดง ${data.logs.length} รายการ (สูงสุด 300 รายการล่าสุด)`;
+
+            } catch (err) {
+                console.error("โหลด Log ไม่สำเร็จ:", err);
+            }
+        }
+
+        (async function init() {
+            const hasAccess = await checkAdminAccess();
+            if (hasAccess) loadLogs();
+        })();
+    </script>
+</body>
+</html>

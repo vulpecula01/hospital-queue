@@ -1,0 +1,533 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <script src="auth-check.js"></script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ระบบลงทะเบียนออกบัตรคิว</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
+
+    <style>
+        #ticket-print-area { display: none; }
+
+        @media print {
+            @page {
+                size: 80mm auto;
+                margin: 0mm !important; /* ยกเลิก Margin เครื่องพิมพ์ทั้งหมด */
+            }
+            html, body {
+                width: 100% !important;
+                margin: 0 !important;
+                padding: 0 !important;
+                background: #fff !important;
+            }
+            body * { visibility: hidden; }
+            #ticket-print-area, #ticket-print-area * { visibility: visible; }
+            
+            #ticket-print-area {
+                display: block !important;
+                position: absolute !important;
+                left: 50% !important;
+                top: 0 !important;
+                transform: translateX(-50%) !important;
+                width: 72mm !important; /* ปรับขนาดให้พอดีกับหัวพิมพ์ Thermal */
+                padding: 2mm 3mm 10mm 3mm !important;
+                font-family: 'Tahoma', 'Sarabun', sans-serif;
+                color: #000;
+                text-align: center !important;
+                box-sizing: border-box !important;
+            }
+            
+            .ticket-logo { 
+                width: 55px !important; 
+                height: auto !important; 
+                margin: 0 auto 4px auto !important; 
+                display: block !important; 
+            }
+            .ticket-title { font-size: 19px; font-weight: bold; margin-bottom: 2px; text-align: center; }
+            .ticket-subtitle { font-size: 13px; font-weight: bold; text-align: center; }
+            .ticket-divider { border-top: 2px dashed #000; margin: 6px 0; width: 100%; }
+            .ticket-queue-number { font-size: 70px; font-weight: 900; margin: 0 auto; line-height: 1; text-align: center; }
+            
+            /* รายละเอียดผู้ป่วย — จัดกลางกระดาษทั้งหมด */
+            .ticket-info { font-size: 14px; line-height: 1.6; margin: 3px 0; text-align: center; }
+            
+            /* บาร์โค้ด CN/เลขคิว — ต้องบังคับ display ชัดเจนเหมือน QR Code เพราะ SVG บางเบราว์เซอร์ไม่ inherit visibility ให้ลูกอัตโนมัติตอนพิมพ์ */
+            #cn-barcode-wrapper {
+                display: block !important;
+                width: 100% !important;
+                margin: 4px auto !important;
+                text-align: center !important;
+            }
+            #cn-barcode {
+                display: inline-block !important;
+                visibility: visible !important;
+                max-width: 100% !important;
+                height: auto !important;
+            }
+            #cn-barcode * {
+                visibility: visible !important;
+            }
+
+            /* QR Code จัดศูนย์กลางผ่าน Block + Auto Margin */
+            #qrcode-container {
+                display: block !important;
+                width: 120px !important;
+                margin: 0 auto !important;
+                text-align: center !important;
+            }
+            #qrcode-container img {
+                display: block !important;
+                margin: 0 auto !important;
+            }
+
+            .ticket-footer { 
+                font-size: 11px; 
+                font-weight: bold; 
+                margin-top: 6px; 
+                border-top: 2px dashed #000; 
+                padding-top: 5px; 
+                text-align: center !important; 
+            }
+        }
+    </style>
+</head>
+<body class="bg-slate-900 text-white min-h-screen pb-10">
+
+    <nav class="bg-slate-800 border-b border-slate-700 px-4 py-3 flex items-center justify-between text-sm">
+        <div class="flex items-center space-x-3">
+            <span class="text-slate-300 font-bold">📍 หน้าปัจจุบัน: <span class="text-emerald-400">ลงทะเบียนออกบัตรคิว</span></span>
+        </div>
+    </nav>
+
+    <div class="max-w-xl mx-auto mt-8 p-6 bg-slate-800 rounded-2xl border border-slate-700 shadow-2xl">
+        <div class="flex justify-center mb-3">
+            <img src="brh.png" alt="Hospital Logo" class="w-16 h-16 object-contain" onerror="this.style.display='none'">
+        </div>
+        <h2 class="text-2xl font-bold text-emerald-400 mb-6 text-center"><i class="fa-solid fa-address-card mr-2"></i>ลงทะเบียนออกบัตรคิว</h2>
+
+        <form id="register-form" class="space-y-5">
+            <div>
+                <label class="block text-sm text-slate-400 mb-1"><i class="fa-solid fa-barcode mr-1"></i> ยิง Barcode บัตรผู้ป่วย (CN)</label>
+                <input type="text" id="cn_scan_input" autocomplete="off" placeholder="คลิกช่องนี้แล้วยิง Barcode CN... (เช่น 15C15-103215)" class="w-full bg-slate-900 border-2 border-emerald-700 rounded-xl p-3 text-white text-lg tracking-wider focus:outline-none focus:border-emerald-500">
+                <p class="text-xs text-slate-500 mt-1">* ระบบรับได้ทั้งเลข CN แบบมีขีด และไม่มีขีด — ยิงแล้วระบบจะดึงชื่อ/HN/วันเกิด/เพศ มาให้อัตโนมัติ</p>
+                <div id="cn-lookup-status" class="hidden mt-2 text-sm rounded-lg p-2.5"></div>
+            </div>
+
+            <div id="patient-info-box" class="hidden bg-slate-900 border border-emerald-700 rounded-xl p-3 text-sm space-y-1">
+                <div class="flex justify-between"><span class="text-slate-400">CN:</span><span id="info-cn" class="font-bold text-emerald-400"></span></div>
+                <div class="flex justify-between"><span class="text-slate-400">HN:</span><span id="info-hn" class="font-bold"></span></div>
+                <div class="flex justify-between"><span class="text-slate-400">วันเกิด:</span><span id="info-dob" class="font-bold"></span></div>
+                <div class="flex justify-between"><span class="text-slate-400">เพศ:</span><span id="info-gender" class="font-bold"></span></div>
+                <button type="button" id="clear-patient-btn" class="w-full mt-2 text-xs text-red-300 hover:text-red-200 underline">✕ ล้างข้อมูลนี้ / ยิงใหม่</button>
+            </div>
+
+            <div>
+                <label class="block text-sm text-slate-400 mb-1">ชื่อ - นามสกุล ผู้ป่วย</label>
+                <input type="text" id="patient_name" required placeholder="กรอกชื่อ-นามสกุล... (หรือยิง Barcode ด้านบนเพื่อดึงอัตโนมัติ)" class="w-full bg-slate-900 border border-slate-700 rounded-xl p-3 text-white focus:outline-none focus:border-emerald-500">
+                <input type="hidden" id="patient_cn">
+                <input type="hidden" id="patient_hn">
+                <input type="hidden" id="patient_dob">
+                <input type="hidden" id="patient_gender">
+            </div>
+
+            <div>
+                <label class="block text-sm text-slate-400 mb-2">ประเภทการเข้ารับบริการ</label>
+                <div class="grid grid-cols-3 gap-3">
+                    <label class="cursor-pointer border border-slate-700 bg-slate-900 p-4 rounded-xl flex flex-col items-center hover:border-amber-500 transition-all has-[:checked]:border-amber-500 has-[:checked]:bg-amber-950/30">
+                        <input type="radio" name="queue_type" value="walkin" checked class="hidden">
+                        <i class="fa-solid fa-person-walking text-3xl text-amber-400 mb-2"></i>
+                        <span class="font-bold text-sm">Walk-in</span>
+                        <span class="text-xs text-slate-400">คิวทั่วไป (W)</span>
+                    </label>
+
+                    <label class="cursor-pointer border border-slate-700 bg-slate-900 p-4 rounded-xl flex flex-col items-center hover:border-purple-500 transition-all has-[:checked]:border-purple-500 has-[:checked]:bg-purple-950/30">
+                        <input type="radio" name="queue_type" value="appointment" class="hidden">
+                        <i class="fa-solid fa-calendar-check text-3xl text-purple-400 mb-2"></i>
+                        <span class="font-bold text-sm">มีนัดหมาย</span>
+                        <span class="text-xs text-slate-400">คิวนัด (A)</span>
+                    </label>
+
+                    <label class="cursor-pointer border border-slate-700 bg-slate-900 p-4 rounded-xl flex flex-col items-center hover:border-teal-500 transition-all has-[:checked]:border-teal-500 has-[:checked]:bg-teal-950/30">
+                        <input type="radio" name="queue_type" value="mobile" class="hidden">
+                        <i class="fa-solid fa-truck-medical text-3xl text-teal-400 mb-2"></i>
+                        <span class="font-bold text-sm">Mobile</span>
+                        <span class="text-xs text-slate-400">Mobile Unit (M)</span>
+                    </label>
+                </div>
+            </div>
+
+            <!-- ℹ️ แจ้งเตือน: ไม่ต้องเลือกจุดตรวจตอนนี้แล้ว -->
+            <div class="bg-blue-950/40 border border-blue-500/40 rounded-xl p-4 text-sm text-blue-200 flex items-start gap-2">
+                <i class="fa-solid fa-circle-info mt-0.5"></i>
+                <span>ไม่ต้องเลือกจุดตรวจตอนนี้ — หลังออกบัตรคิวแล้ว ระบบจะขึ้นรายชื่อคนไข้ในหน้า <b>"จัดการคิว / แก้ไขโปรแกรมตรวจ"</b> ให้พยาบาลกำหนดโปรแกรมตรวจอีกครั้ง</span>
+            </div>
+
+            <button type="submit" id="submit-btn" class="w-full bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white font-bold p-3.5 rounded-xl transition-all shadow-lg mt-4 flex items-center justify-center gap-2 cursor-pointer">
+                <i class="fa-solid fa-ticket"></i> ยืนยันออกบัตรคิว
+            </button>
+        </form>
+
+        <div id="error-box" class="hidden mt-4 bg-red-900/50 border border-red-500 text-red-200 p-3 rounded-xl text-center text-sm font-semibold"></div>
+    </div>
+
+    <!-- Modal: เพิ่มผู้ป่วยใหม่ -->
+    <div id="new-patient-modal" class="hidden fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+        <div class="bg-slate-800 border border-slate-700 rounded-2xl p-6 max-w-md w-full shadow-2xl">
+            <h3 class="text-xl font-bold text-emerald-400 mb-4"><i class="fa-solid fa-user-plus mr-2"></i>เพิ่มผู้ป่วยใหม่</h3>
+            <p class="text-sm text-slate-400 mb-4">ไม่พบข้อมูลผู้ป่วยจากเลข CN นี้ โปรดกรอกข้อมูลเพื่อเพิ่มลงระบบ</p>
+
+            <form id="new-patient-form" class="space-y-3">
+                <div>
+                    <label class="block text-xs text-slate-400 mb-1">ชื่อ *</label>
+                    <input type="text" id="np-first-name" required placeholder="เช่น สมชาย" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-white text-sm focus:outline-none focus:border-emerald-500">
+                </div>
+
+                <div>
+                    <label class="block text-xs text-slate-400 mb-1">นามสกุล *</label>
+                    <input type="text" id="np-last-name" required placeholder="เช่น ใจดี" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-white text-sm focus:outline-none focus:border-emerald-500">
+                </div>
+
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-xs text-slate-400 mb-1">เพศ</label>
+                        <select id="np-gender" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-white text-sm focus:outline-none focus:border-emerald-500">
+                            <option value="">เลือก</option>
+                            <option value="Male">ชาย</option>
+                            <option value="Female">หญิง</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs text-slate-400 mb-1">วันเกิด</label>
+                        <input type="text" id="np-dob" placeholder="dd/mm/yyyy" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-white text-sm focus:outline-none focus:border-emerald-500">
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-xs text-slate-400 mb-1">HN (ไม่บังคับ)</label>
+                    <input type="text" id="np-hn" placeholder="เช่น 15-18-010237" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-white text-sm focus:outline-none focus:border-emerald-500">
+                </div>
+
+                <div id="np-error" class="hidden bg-red-900/50 border border-red-500 text-red-200 p-2 rounded-lg text-xs"></div>
+
+                <div class="flex gap-2 pt-2">
+                    <button type="button" onclick="closeNewPatientModal()" class="flex-1 bg-slate-700 hover:bg-slate-600 text-white font-bold py-2 px-4 rounded-lg transition text-sm">
+                        ยกเลิก
+                    </button>
+                    <button type="submit" class="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-2 px-4 rounded-lg transition text-sm flex items-center justify-center gap-1">
+                        <i class="fa-solid fa-plus"></i> บันทึกผู้ป่วยใหม่
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- โครงสร้างบัตรรอตรวจสำหรับพิมพ์ -->
+    <div id="ticket-print-area">
+        <img src="brh.png" alt="Logo" class="ticket-logo" onerror="this.src='data:image/svg+xml;utf8,<svg xmlns=\'http://www.w3.org/2000/svg\' width=\'40\' height=\'40\' viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'black\' stroke-width=\'2\'><path d=\'M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6\'/></svg>'">
+        
+        <div class="ticket-title">โรงพยาบาลกรุงเทพ</div>
+        <div class="ticket-subtitle">บัตรคิวรับบริการ</div>
+        
+        <div class="ticket-divider"></div>
+        <div style="font-size: 13px; font-weight: bold; text-align: center;">หมายเลขคิวของคุณ</div>
+        <div class="ticket-queue-number" id="print-queue-num">W000</div>
+        <div class="ticket-divider"></div>
+        
+        <div class="ticket-info"><b>ชื่อ:</b> <span id="print-patient-name">-</span></div>
+        <div class="ticket-info"><b>ประเภท:</b> <span id="print-queue-type">-</span></div>
+        <div class="ticket-info"><b>เวลา:</b> <span id="print-date">-</span></div>
+
+        <!-- 🆔 บาร์โค้ด CN — ให้คนไข้เอาใบคิวนี้ไปสแกนที่แต่ละจุดตรวจแทนบัตรแยก -->
+        <div id="cn-barcode-wrapper" style="margin: 6px 0; text-align: center;">
+            <svg id="cn-barcode"></svg>
+        </div>
+
+        <div class="ticket-divider"></div>
+        <div style="margin: 6px 0; text-align: center;">
+            <div id="qrcode-container"></div>
+        </div>
+        
+        <div class="ticket-footer">
+            สแกน QR Code เพื่อติดตามสถานะคิวบนมือถือ<br>
+            <span style="font-size: 9px; color: #444;">(โปรดเชื่อมต่อ Wi-Fi โรงพยาบาล)</span>
+        </div>
+    </div>
+
+    <script>
+        const SERVER_IP = "10.121.111.233";
+        // 🌐 โดเมนสาธารณะสำหรับ QR Code เท่านั้น (ต้องแยกจาก SERVER_IP เพราะ 10.121.111.233 เป็น IP วง LAN
+        // เข้าจากเน็ตนอกไม่ได้ — ใส่โดเมนที่ได้จาก Cloudflare Tunnel/Tailscale Funnel ที่ชี้ไปที่ public_track.py)
+        // ถ้ายังไม่ได้ตั้งค่า tunnel ให้ปล่อยว่างไว้ก่อน โค้ดจะ fallback ไปใช้ SERVER_IP (ใช้ได้แค่ในวง WiFi โรงพยาบาล)
+        const PUBLIC_TRACK_BASE = "https://imagination-obtaining-luis-wrap.trycloudflare.com"; // 👈 ใส่ เช่น "https://queue-track.yourclinic.com"
+        const API_URL = `http://${SERVER_IP}:8000/api/register`;
+        const LOOKUP_URL = `http://${SERVER_IP}:8000/api/patient-lookup`;
+
+        const cnInput = document.getElementById("cn_scan_input");
+        const lookupStatus = document.getElementById("cn-lookup-status");
+        const infoBox = document.getElementById("patient-info-box");
+        const nameInput = document.getElementById("patient_name");
+
+        function showLookupStatus(msg, type) {
+            lookupStatus.classList.remove("hidden", "bg-red-900/50", "text-red-200", "bg-emerald-900/50", "text-emerald-200");
+            lookupStatus.classList.add(type === "error" ? "bg-red-900/50" : "bg-emerald-900/50", type === "error" ? "text-red-200" : "text-emerald-200");
+            lookupStatus.innerText = msg;
+        }
+
+        function clearPatientData() {
+            document.getElementById("patient_cn").value = "";
+            document.getElementById("patient_hn").value = "";
+            document.getElementById("patient_dob").value = "";
+            document.getElementById("patient_gender").value = "";
+            nameInput.value = "";
+            nameInput.readOnly = false;
+            infoBox.classList.add("hidden");
+            lookupStatus.classList.add("hidden");
+            cnInput.value = "";
+            cnInput.disabled = false;
+            cnInput.focus();
+        }
+
+        document.getElementById("clear-patient-btn").addEventListener("click", clearPatientData);
+
+        // ยิง Barcode แล้วเครื่องอ่านจะพิมพ์ตัวอักษรตามด้วย Enter โดยอัตโนมัติ
+        cnInput.addEventListener("keydown", async (e) => {
+            if (e.key !== "Enter") return;
+            e.preventDefault();
+
+            const rawCn = cnInput.value.trim();
+            if (!rawCn) return;
+
+            showLookupStatus("🔍 กำลังค้นหาข้อมูลผู้ป่วย...", "info");
+
+            try {
+                const res = await fetch(`${LOOKUP_URL}/${encodeURIComponent(rawCn)}`);
+                const data = await res.json();
+
+                if (!res.ok) {
+                    // CN ไม่เจอ -> แสดง modal เพิ่มผู้ป่วยใหม่
+                    document.getElementById("np-first-name").value = "";
+                    document.getElementById("np-last-name").value = "";
+                    document.getElementById("np-gender").value = "";
+                    document.getElementById("np-dob").value = "";
+                    document.getElementById("np-hn").value = "";
+                    document.getElementById("np-error").classList.add("hidden");
+                    
+                    // เก็บ CN ที่กำลังจะใช้ ไว้เผื่อ submit modal
+                    window.currentScannedCN = rawCn;
+                    
+                    showLookupStatus(`⚠️ ${data.detail || "ไม่พบข้อมูลผู้ป่วยจาก CN นี้"} — กรุณากรอกข้อมูลเพื่อเพิ่มผู้ป่วยใหม่`, "error");
+                    document.getElementById("new-patient-modal").classList.remove("hidden");
+                    document.getElementById("np-first-name").focus();
+                    return;
+                }
+
+                // พบข้อมูล -> เติมอัตโนมัติ
+                document.getElementById("patient_cn").value = data.cn || "";
+                document.getElementById("patient_hn").value = data.hn || "";
+                document.getElementById("patient_dob").value = data.birth_date || "";
+                document.getElementById("patient_gender").value = data.gender || "";
+
+                nameInput.value = data.full_name || "";
+                nameInput.readOnly = true;
+
+                document.getElementById("info-cn").innerText = data.cn || "-";
+                document.getElementById("info-hn").innerText = data.hn || "-";
+                document.getElementById("info-dob").innerText = data.birth_date || "-";
+                document.getElementById("info-gender").innerText = data.gender || "-";
+                infoBox.classList.remove("hidden");
+
+                showLookupStatus("✅ พบข้อมูลผู้ป่วย กำลังออกบัตรคิว...", "success");
+                cnInput.disabled = true;
+
+                // 🌟 คนไข้เดิม (สแกน CN เจอ) — ออกบัตรคิว + พิมพ์ทันที ไม่ต้องกดยืนยันอีกรอบ
+                // (กดยืนยันเองแค่กรณีคนไข้ใหม่ ที่ต้องกรอกข้อมูลในหน้าต่างเพิ่มผู้ป่วยใหม่ก่อน)
+                await submitRegistration();
+            } catch (err) {
+                console.error(err);
+                showLookupStatus("⚠️ เชื่อมต่อระบบค้นหาข้อมูลผู้ป่วยไม่สำเร็จ", "error");
+            }
+        });
+
+        document.getElementById("register-form").addEventListener("submit", async (e) => {
+            e.preventDefault();
+            await submitRegistration();
+        });
+
+        async function submitRegistration() {
+            const submitBtn = document.getElementById("submit-btn");
+            const errorBox = document.getElementById("error-box");
+            errorBox.classList.add("hidden");
+            
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = `<i class="fa-solid fa-spinner animate-spin"></i> กำลังบันทึก...`;
+
+            const name = document.getElementById("patient_name").value;
+            const queueType = document.querySelector('input[name="queue_type"]:checked').value;
+
+            try {
+                const res = await fetch(API_URL, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    credentials: "include",
+                    body: JSON.stringify({ 
+                        patient_name: name, 
+                        queue_type: queueType,
+                        cn: document.getElementById("patient_cn").value || null,
+                        hn: document.getElementById("patient_hn").value || null,
+                        birth_date: document.getElementById("patient_dob").value || null,
+                        gender: document.getElementById("patient_gender").value || null
+                    })
+                });
+
+                if (!res.ok) throw new Error(`HTTP Status: ${res.status}`);
+                const data = await res.json();
+
+                if (data.status === "success" || data.queue_number) {
+                    const queueNum = data.queue_number;
+                    const typeText = (queueType === "walkin") ? "Walk-in (คิวทั่วไป)" : (queueType === "mobile") ? "เก็บตกในโรงพยาบาล (คิว M)" : "มีนัดหมาย (คิวนัด)";
+
+                    // เติมข้อมูลลงสลิป
+                    document.getElementById("print-queue-num").innerText = queueNum;
+                    document.getElementById("print-patient-name").innerText = name;
+                    document.getElementById("print-queue-type").innerText = typeText;
+                    document.getElementById("print-date").innerText = new Date().toLocaleString('th-TH');
+
+                    // สร้าง QR Code
+                    const trackBase = PUBLIC_TRACK_BASE || `http://${SERVER_IP}:8000`;
+                    const trackingURL = `${trackBase}/track.html?q=${queueNum}`;
+                    const qrContainer = document.getElementById("qrcode-container");
+                    qrContainer.innerHTML = "";
+                    new QRCode(qrContainer, {
+                        text: trackingURL,
+                        width: 120,
+                        height: 120,
+                        correctLevel : QRCode.CorrectLevel.H
+                    });
+
+                    // 🆔 สร้างบาร์โค้ดบนใบคิว — ให้เอาไปสแกนที่แต่ละจุดตรวจแทนบัตรแยกได้เสมอ
+                    // ใช้ CN ถ้ามี (คนไข้เดิม) ถ้าไม่มี (คนไข้ใหม่/Walk-in ไม่มี CN) ใช้ "เลขคิว" แทน
+                    // เพราะระบบสแกนรับคิวรองรับทั้ง CN และเลขคิวอยู่แล้ว (ดู /api/checkin-station)
+                    const cnValue = document.getElementById("patient_cn").value;
+                    const barcodeValue = cnValue || queueNum;
+                    const barcodeWrapper = document.getElementById("cn-barcode-wrapper");
+                    try {
+                        JsBarcode("#cn-barcode", barcodeValue, {
+                            format: "CODE128",
+                            width: 1.6,
+                            height: 40,
+                            fontSize: 12,
+                            margin: 4,
+                            displayValue: true
+                        });
+                        barcodeWrapper.style.display = "block";
+                    } catch (barcodeErr) {
+                        console.error("สร้างบาร์โค้ดไม่สำเร็จ:", barcodeErr);
+                        barcodeWrapper.style.display = "none";
+                    }
+
+                    setTimeout(() => { window.print(); }, 300);
+                    setTimeout(() => { clearPatientData(); }, 500);
+                } else {
+                    throw new Error(data.message || "เกิดข้อผิดพลาดในการสร้างคิว");
+                }
+            } catch (err) {
+                console.error(err);
+                errorBox.innerText = `⚠️ ส่งข้อมูลไม่สำเร็จ: โปรดตรวจสอบ Backend (${SERVER_IP}:8000)`;
+                errorBox.classList.remove("hidden");
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.innerHTML = `<i class="fa-solid fa-ticket"></i> ยืนยันออกบัตรคิว`;
+            }
+        }
+
+        // === Modal Controls ===
+        function closeNewPatientModal() {
+            document.getElementById("new-patient-modal").classList.add("hidden");
+            window.currentScannedCN = "";
+            clearPatientData();
+        }
+
+        // Modal background click to close
+        document.getElementById("new-patient-modal").addEventListener("click", (e) => {
+            if (e.target.id === "new-patient-modal") {
+                closeNewPatientModal();
+            }
+        });
+
+        // === New Patient Form Submit ===
+        document.getElementById("new-patient-form").addEventListener("submit", async (e) => {
+            e.preventDefault();
+
+            const firstName = document.getElementById("np-first-name").value.trim();
+            const lastName = document.getElementById("np-last-name").value.trim();
+            const gender = document.getElementById("np-gender").value.trim() || null;
+            const dob = document.getElementById("np-dob").value.trim() || null;
+            const hn = document.getElementById("np-hn").value.trim() || null;
+            const errorDiv = document.getElementById("np-error");
+
+            if (!firstName) {
+                errorDiv.innerText = "⚠️ กรุณากรอกชื่อ";
+                errorDiv.classList.remove("hidden");
+                return;
+            }
+
+            if (!window.currentScannedCN) {
+                errorDiv.innerText = "⚠️ ข้อมูล CN สูญหาย โปรดลองสแกนใหม่";
+                errorDiv.classList.remove("hidden");
+                return;
+            }
+
+            errorDiv.classList.add("hidden");
+
+            try {
+                const res = await fetch(`http://${SERVER_IP}:8000/api/patient-add`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        cn: window.currentScannedCN,
+                        first_name: firstName,
+                        last_name: lastName,
+                        gender: gender,
+                        birth_date: dob,
+                        hn: hn
+                    })
+                });
+
+                if (!res.ok) {
+                    const errData = await res.json();
+                    throw new Error(errData.detail || `เกิดข้อผิดพลาด (${res.status})`);
+                }
+
+                const data = await res.json();
+
+                // บันทึกเข้า hidden fields และแสดง info box
+                document.getElementById("patient_cn").value = data.cn || "";
+                document.getElementById("patient_hn").value = data.hn || "";
+                document.getElementById("patient_dob").value = data.birth_date || "";
+                document.getElementById("patient_gender").value = data.gender || "";
+
+                nameInput.value = data.full_name || "";
+                nameInput.readOnly = true;
+
+                document.getElementById("info-cn").innerText = data.cn || "-";
+                document.getElementById("info-hn").innerText = data.hn || "-";
+                document.getElementById("info-dob").innerText = data.birth_date || "-";
+                document.getElementById("info-gender").innerText = data.gender || "-";
+                infoBox.classList.remove("hidden");
+
+                showLookupStatus("✅ เพิ่มผู้ป่วยใหม่สำเร็จ", "success");
+                closeNewPatientModal();
+                document.getElementById("submit-btn").focus();
+            } catch (err) {
+                console.error(err);
+                errorDiv.innerText = `❌ ${err.message}`;
+                errorDiv.classList.remove("hidden");
+            }
+        });
+    </script>
+</body>
+</html>

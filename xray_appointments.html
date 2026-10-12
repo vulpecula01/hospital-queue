@@ -1,0 +1,459 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <script src="auth-check.js"></script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>จัดการนัด X-Ray / Ultrasound / Mammogram</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
+    <style>
+        #ticket-print-area { display: none; }
+
+        @media print {
+            @page {
+                size: 80mm auto;
+                margin: 0mm !important;
+            }
+            html, body {
+                width: 100% !important;
+                margin: 0 !important;
+                padding: 0 !important;
+                background: #fff !important;
+            }
+            body * { visibility: hidden; }
+            #ticket-print-area, #ticket-print-area * { visibility: visible; }
+
+            #ticket-print-area {
+                display: block !important;
+                position: absolute !important;
+                left: 50% !important;
+                top: 0 !important;
+                transform: translateX(-50%) !important;
+                width: 72mm !important;
+                padding: 2mm 3mm 10mm 3mm !important;
+                font-family: 'Tahoma', 'Sarabun', sans-serif;
+                color: #000;
+                text-align: center !important;
+                box-sizing: border-box !important;
+            }
+
+            .ticket-title { font-size: 19px; font-weight: bold; margin-bottom: 2px; text-align: center; }
+            .ticket-subtitle { font-size: 13px; font-weight: bold; text-align: center; }
+            .ticket-divider { border-top: 2px dashed #000; margin: 6px 0; width: 100%; }
+            .ticket-queue-number { font-size: 70px; font-weight: 900; margin: 0 auto; line-height: 1; text-align: center; }
+            .ticket-info { font-size: 14px; line-height: 1.6; margin: 3px 0; text-align: center; }
+
+            /* บาร์โค้ด CN/เลขคิว — ต้องบังคับ display ชัดเจนเหมือน QR Code เพราะ SVG บางเบราว์เซอร์ไม่ inherit visibility ให้ลูกอัตโนมัติตอนพิมพ์ */
+            #ticket-barcode-wrapper {
+                display: block !important;
+                width: 100% !important;
+                margin: 4px auto !important;
+                text-align: center !important;
+            }
+            #ticket-barcode {
+                display: inline-block !important;
+                visibility: visible !important;
+                max-width: 100% !important;
+                height: auto !important;
+            }
+            #ticket-barcode * {
+                visibility: visible !important;
+            }
+
+            #ticket-qrcode-container {
+                display: block !important;
+                width: 120px !important;
+                margin: 0 auto !important;
+                text-align: center !important;
+            }
+            #ticket-qrcode-container img {
+                display: block !important;
+                margin: 0 auto !important;
+            }
+
+            .ticket-footer {
+                font-size: 11px;
+                font-weight: bold;
+                margin-top: 6px;
+                border-top: 2px dashed #000;
+                padding-top: 5px;
+                text-align: center !important;
+            }
+        }
+    </style>
+</head>
+<body class="bg-slate-900 text-white min-h-screen p-6">
+
+    <!-- 🎫 ใบคิว (ซ่อนอยู่ปกติ โผล่เฉพาะตอนสั่งพิมพ์) -->
+    <div id="ticket-print-area">
+        <div class="ticket-title">โรงพยาบาล</div>
+        <div class="ticket-subtitle">บัตรคิวรับบริการ</div>
+
+        <div class="ticket-divider"></div>
+        <div style="font-size: 13px; font-weight: bold; text-align: center;">หมายเลขคิวของคุณ</div>
+        <div class="ticket-queue-number" id="ticket-queue-num">A000</div>
+        <div class="ticket-divider"></div>
+
+        <div class="ticket-info"><b>ชื่อ:</b> <span id="ticket-patient-name">-</span></div>
+        <div class="ticket-info"><b>รายการตรวจ:</b> <span id="ticket-exam-label">-</span></div>
+
+        <div id="ticket-barcode-wrapper" style="margin: 6px 0; text-align: center;">
+            <svg id="ticket-barcode"></svg>
+        </div>
+
+        <div class="ticket-divider"></div>
+        <div style="margin: 6px 0; text-align: center;">
+            <div id="ticket-qrcode-container"></div>
+        </div>
+
+        <div class="ticket-footer">
+            สแกน QR Code เพื่อติดตามสถานะคิวบนมือถือ<br>
+            <span style="font-size: 9px; color: #444;">(โปรดเชื่อมต่อ Wi-Fi โรงพยาบาล)</span>
+        </div>
+    </div>
+
+    <div class="max-w-4xl mx-auto">
+
+        <div class="text-center mb-6">
+            <h1 class="text-3xl font-black text-blue-400">📅 จัดการนัด X-Ray / Ultrasound / Mammogram</h1>
+            <p class="text-slate-400 text-sm mt-1">สำหรับคนไข้ที่มาเฉพาะกลุ่มนี้อย่างเดียว แยกจากระบบคิวหลัก</p>
+        </div>
+
+        <!-- 🚶 Walk-in ด่วน — สำหรับคนไข้ที่มาตรวจอย่างเดียว ไม่ได้ผ่านเคาน์เตอร์หลัก ไม่ได้นัดล่วงหน้า -->
+        <div class="bg-amber-950/40 border-2 border-amber-500/50 rounded-2xl p-5 mb-6">
+            <h2 class="font-bold text-lg mb-1 flex items-center gap-2 text-amber-300">
+                🚶 Walk-in ด่วน (ไม่ได้ลงทะเบียนหลัก / ไม่ได้นัดล่วงหน้า)
+            </h2>
+            <p class="text-xs text-amber-200/70 mb-3">
+                สำหรับคนไข้ที่มาตรวจ X-Ray/Ultrasound/Mammogram อย่างเดียว โดยไม่ผ่านเคาน์เตอร์ลงทะเบียนหลัก — ออกเลขคิวให้ทันที
+            </p>
+            <div class="flex flex-wrap items-center gap-3">
+                <input type="text" id="walkin-name" placeholder="ชื่อ-สกุลผู้ป่วย"
+                       class="flex-1 min-w-[200px] bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white text-sm">
+                <select id="walkin-exam-type" class="bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white text-sm">
+                    <option value="XRay">🦴 X-Ray (ปอด)</option>
+                    <option value="Ultrasound">🩺 Ultrasound</option>
+                    <option value="Mammogram">🎗️ Mammogram</option>
+                </select>
+                <input type="text" id="walkin-cn" placeholder="CN (ถ้ามี)"
+                       class="w-32 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white text-sm">
+                <button onclick="submitWalkin()" class="bg-amber-600 hover:bg-amber-500 text-white font-bold px-4 py-2 rounded-lg text-sm">
+                    <i class="fa-solid fa-ticket"></i> ออกคิวทันที
+                </button>
+            </div>
+            <p id="walkin-result" class="text-sm mt-3"></p>
+        </div>
+
+        <!-- นำเข้าไฟล์นัดล่วงหน้า -->
+        <div class="bg-slate-800 border border-slate-700 rounded-2xl p-5 mb-6">
+            <div class="flex items-center justify-between mb-3">
+                <h2 class="font-bold text-lg flex items-center gap-2">
+                    <i class="fa-solid fa-file-excel text-emerald-400"></i> นำเข้ารายชื่อนัดล่วงหน้า (.xlsx)
+                </h2>
+                <button onclick="downloadTemplate()" class="bg-slate-700 hover:bg-slate-600 text-white text-xs font-bold px-3 py-1.5 rounded-lg">
+                    <i class="fa-solid fa-download"></i> ดาวน์โหลด Template
+                </button>
+            </div>
+            <p class="text-xs text-slate-400 mb-3">
+                คอลัมน์ในไฟล์ (แถวแรกเป็นหัวตาราง): <b>ชื่อ-สกุล | เวลานัด (เช่น 09:00) | ประเภทตรวจ (XRay/Ultrasound/Mammogram) | CN | HN</b>
+                — แนะนำให้กด "ดาวน์โหลด Template" แล้วกรอกต่อจากไฟล์นั้นเลย กันปัญหารูปแบบไฟล์ผิด
+            </p>
+            <div class="flex flex-wrap items-center gap-3">
+                <input type="date" id="import-date" class="bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white text-sm">
+                <input type="file" id="import-file" accept=".xlsx" class="text-sm text-slate-300">
+                <button onclick="uploadFile()" class="bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-4 py-2 rounded-lg text-sm">
+                    <i class="fa-solid fa-upload"></i> นำเข้า
+                </button>
+            </div>
+            <p id="import-result" class="text-sm mt-3"></p>
+        </div>
+
+        <!-- รายชื่อวันนี้ -->
+        <div class="bg-slate-800 border border-slate-700 rounded-2xl p-5">
+            <div class="flex items-center justify-between mb-3">
+                <h2 class="font-bold text-lg">รายชื่อนัดวันนี้</h2>
+                <div class="flex items-center gap-2">
+                    <input type="text" id="search-box" placeholder="ค้นหาชื่อ หรือ CN..." oninput="renderList()"
+                           class="bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-sm text-white">
+                    <button onclick="loadAppointments()" class="bg-slate-700 hover:bg-slate-600 text-white text-sm font-bold px-3 py-1.5 rounded-lg">
+                        <i class="fa-solid fa-rotate"></i>
+                    </button>
+                </div>
+            </div>
+            <div id="appointment-list" class="space-y-2"></div>
+        </div>
+
+    </div>
+
+    <!-- Popup ผลลัพธ์การยืนยัน -->
+    <div id="confirm-result-overlay" class="hidden fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+        <div class="bg-white rounded-2xl shadow-2xl p-6 max-w-sm w-full text-center">
+            <div class="text-4xl mb-2">✅</div>
+            <p id="confirm-result-queue" class="text-3xl font-black text-emerald-600"></p>
+            <p id="confirm-result-name" class="text-gray-700 mt-1"></p>
+            <p id="confirm-result-exam" class="text-gray-500 text-sm mt-1"></p>
+            <button onclick="document.getElementById('confirm-result-overlay').classList.add('hidden')"
+                    class="mt-4 w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2.5 rounded-xl">
+                ปิด
+            </button>
+        </div>
+    </div>
+
+    <script>
+        const serverIP = "10.121.111.233";
+        let allAppointments = [];
+
+        const EXAM_LABELS = { XRay: "X-Ray (ปอด)", Ultrasound: "Ultrasound", Mammogram: "Mammogram" };
+        const EXAM_ICONS = { XRay: "🦴", Ultrasound: "🩺", Mammogram: "🎗️" };
+
+        function setToday() {
+            document.getElementById("import-date").value = new Date().toISOString().split('T')[0];
+        }
+        setToday();
+
+        // 🎫 พิมพ์บัตรคิว — ใช้ร่วมกันทั้ง Walk-in ด่วน และยืนยันมาถึง (นัดล่วงหน้า)
+        function printTicket(queueNumber, patientName, examLabel, cnOrNull) {
+            document.getElementById("ticket-queue-num").innerText = queueNumber;
+            document.getElementById("ticket-patient-name").innerText = patientName || "-";
+            document.getElementById("ticket-exam-label").innerText = examLabel;
+
+            const trackingURL = `http://${serverIP}:8000/track.html?q=${queueNumber}`;
+            const qrContainer = document.getElementById("ticket-qrcode-container");
+            qrContainer.innerHTML = "";
+            new QRCode(qrContainer, {
+                text: trackingURL,
+                width: 120,
+                height: 120,
+                correctLevel: QRCode.CorrectLevel.H
+            });
+
+            // บาร์โค้ด — ใช้ CN ถ้ามี ไม่งั้นใช้เลขคิวแทน (สแกนรับคิวรองรับทั้ง 2 แบบ)
+            const barcodeValue = cnOrNull || queueNumber;
+            try {
+                JsBarcode("#ticket-barcode", barcodeValue, {
+                    format: "CODE128",
+                    width: 1.6,
+                    height: 40,
+                    fontSize: 12,
+                    margin: 4,
+                    displayValue: true
+                });
+            } catch (e) {
+                console.error("สร้างบาร์โค้ดไม่สำเร็จ:", e);
+            }
+
+            setTimeout(() => { window.print(); }, 300);
+        }
+
+        async function submitWalkin() {
+            const nameInput = document.getElementById("walkin-name");
+            const examType = document.getElementById("walkin-exam-type").value;
+            const cnInput = document.getElementById("walkin-cn");
+            const resultBox = document.getElementById("walkin-result");
+
+            const patientName = nameInput.value.trim();
+            if (!patientName) {
+                resultBox.innerHTML = `<span class="text-amber-400">กรุณากรอกชื่อ-สกุลก่อน</span>`;
+                return;
+            }
+
+            resultBox.innerHTML = `<i class="fa-solid fa-spinner animate-spin"></i> กำลังออกคิว...`;
+
+            try {
+                const res = await fetch(`http://${serverIP}:8000/api/xray-appointments/walkin`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    credentials: "include",
+                    body: JSON.stringify({
+                        patient_name: patientName,
+                        exam_type: examType,
+                        cn: cnInput.value.trim() || null
+                    })
+                });
+                const data = await res.json();
+
+                if (!res.ok) throw new Error(data.detail || "ออกคิวไม่สำเร็จ");
+
+                document.getElementById("confirm-result-queue").innerText = data.queue_number;
+                document.getElementById("confirm-result-name").innerText = data.patient_name;
+                document.getElementById("confirm-result-exam").innerText = `เข้าคิว ${data.label} เรียบร้อยแล้ว`;
+                document.getElementById("confirm-result-overlay").classList.remove("hidden");
+
+                printTicket(data.queue_number, data.patient_name, data.label, cnInput.value.trim() || null);
+
+                resultBox.innerHTML = `<span class="text-emerald-400">✅ ออกคิว ${data.queue_number} สำเร็จ</span>`;
+                nameInput.value = "";
+                cnInput.value = "";
+                nameInput.focus();
+
+            } catch (err) {
+                resultBox.innerHTML = `<span class="text-red-400">⚠️ ${err.message}</span>`;
+            }
+        }
+
+        async function downloadTemplate() {
+            try {
+                const res = await fetch(`http://${serverIP}:8000/api/xray-appointments/template`, {
+                    credentials: "include"
+                });
+                if (!res.ok) throw new Error("ดาวน์โหลดไม่สำเร็จ");
+
+                const blob = await res.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement("a");
+                a.href = url;
+                a.download = "xray_appointment_template.xlsx";
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+                window.URL.revokeObjectURL(url);
+            } catch (err) {
+                alert(`⚠️ ${err.message}`);
+            }
+        }
+
+        async function uploadFile() {
+            const fileInput = document.getElementById("import-file");
+            const dateVal = document.getElementById("import-date").value;
+            const resultBox = document.getElementById("import-result");
+
+            if (!fileInput.files.length) {
+                resultBox.innerHTML = `<span class="text-amber-400">กรุณาเลือกไฟล์ก่อน</span>`;
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append("file", fileInput.files[0]);
+            formData.append("appointment_date", dateVal);
+
+            resultBox.innerHTML = `<i class="fa-solid fa-spinner animate-spin"></i> กำลังนำเข้า...`;
+
+            try {
+                const res = await fetch(`http://${serverIP}:8000/api/xray-appointments/bulk-import`, {
+                    method: "POST",
+                    credentials: "include",
+                    body: formData
+                });
+                const data = await res.json();
+
+                if (!res.ok) throw new Error(data.detail || "นำเข้าไม่สำเร็จ");
+
+                let msg = `<span class="text-emerald-400">✅ นำเข้าสำเร็จ ${data.imported_count} รายการ</span>`;
+                if (data.skipped_blank_count > 0) {
+                    msg += `<br><span class="text-amber-400">⚠️ ข้ามแถวว่าง ${data.skipped_blank_count} แถว (แถวที่ ${data.skipped_blank_rows.join(', ')}) — เช็คว่าเซลล์ช่อง "ชื่อ-สกุล" ของแถวนั้นมีข้อมูลจริงไหม</span>`;
+                }
+                if (data.error_count > 0) {
+                    msg += `<br><span class="text-red-400">❌ ผิดพลาด ${data.error_count} แถว: ${data.errors.join(', ')}</span>`;
+                }
+                resultBox.innerHTML = msg;
+
+                fileInput.value = "";
+                loadAppointments();
+
+            } catch (err) {
+                resultBox.innerHTML = `<span class="text-red-400">⚠️ ${err.message}</span>`;
+            }
+        }
+
+        async function loadAppointments() {
+            try {
+                const res = await fetch(`http://${serverIP}:8000/api/xray-appointments/today`, {
+                    credentials: "include"
+                });
+                const data = await res.json();
+                allAppointments = data.appointments || [];
+                renderList();
+            } catch (err) {
+                console.error("โหลดรายชื่อไม่สำเร็จ:", err);
+            }
+        }
+
+        function renderList() {
+            const search = document.getElementById("search-box").value.trim().toLowerCase();
+            const listEl = document.getElementById("appointment-list");
+
+            const filtered = allAppointments.filter(a =>
+                a.patient_name.toLowerCase().includes(search) ||
+                (a.cn && a.cn.toLowerCase().includes(search))
+            );
+
+            if (filtered.length === 0) {
+                listEl.innerHTML = `<p class="text-slate-500 text-center py-4 text-sm">ไม่มีรายการ</p>`;
+                return;
+            }
+
+            listEl.innerHTML = filtered.map(a => {
+                const icon = EXAM_ICONS[a.exam_type] || "📍";
+                const label = EXAM_LABELS[a.exam_type] || a.exam_type;
+                const isConfirmed = a.status === 'confirmed';
+
+                return `
+                    <div class="flex items-center justify-between p-3 rounded-xl border ${isConfirmed ? 'bg-emerald-900/20 border-emerald-700' : 'bg-slate-900 border-slate-700'}">
+                        <div class="flex items-center gap-3">
+                            <span class="text-xl">${icon}</span>
+                            <div>
+                                <p class="font-bold">${a.patient_name}</p>
+                                <p class="text-xs text-slate-400">${label} • นัด ${a.appointment_time}${a.cn ? ` • CN: ${a.cn}` : ''}</p>
+                            </div>
+                        </div>
+                        ${isConfirmed
+                            ? `<span class="text-emerald-400 font-bold text-sm">✅ ${a.queue_number}</span>`
+                            : `<button onclick="confirmArrival(${a.id})" class="bg-blue-600 hover:bg-blue-500 text-white font-bold px-4 py-2 rounded-lg text-sm">
+                                   ยืนยันมาถึง
+                               </button>`
+                        }
+                    </div>
+                `;
+            }).join('');
+        }
+
+        async function confirmArrival(appointmentId) {
+            try {
+                const res = await fetch(`http://${serverIP}:8000/api/xray-appointments/confirm`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    credentials: "include",
+                    body: JSON.stringify({ appointment_id: appointmentId })
+                });
+
+                const rawText = await res.text();
+                console.log("🔍 [confirm] HTTP status:", res.status, "| raw response:", rawText);
+
+                let data;
+                try {
+                    data = JSON.parse(rawText);
+                } catch (parseErr) {
+                    throw new Error(`เซิร์ฟเวอร์ตอบกลับไม่ใช่ JSON (status ${res.status}): ${rawText.slice(0, 200)}`);
+                }
+
+                if (!res.ok) throw new Error(data?.detail || `ยืนยันไม่สำเร็จ (status ${res.status})`);
+
+                if (!data || !data.queue_number) {
+                    throw new Error(`เซิร์ฟเวอร์ตอบกลับสำเร็จ (200) แต่ไม่มีข้อมูลเลขคิว — ข้อมูลที่ได้: ${JSON.stringify(data)}`);
+                }
+
+                document.getElementById("confirm-result-queue").innerText = data.queue_number;
+                document.getElementById("confirm-result-name").innerText = data.patient_name;
+                document.getElementById("confirm-result-exam").innerText = `เข้าคิว ${data.label} เรียบร้อยแล้ว`;
+                document.getElementById("confirm-result-overlay").classList.remove("hidden");
+
+                // หา CN ของนัดนี้จากรายการที่โหลดไว้แล้ว (backend ไม่ได้ส่ง CN กลับมาด้วย)
+                const matchedAppt = allAppointments.find(a => a.id === appointmentId);
+                printTicket(data.queue_number, data.patient_name, data.label, matchedAppt?.cn || null);
+
+                loadAppointments();
+
+            } catch (err) {
+                console.error("❌ [confirm] error:", err);
+                alert(`⚠️ ${err.message}`);
+            }
+        }
+
+        loadAppointments();
+        setInterval(loadAppointments, 30000);
+    </script>
+</body>
+</html>

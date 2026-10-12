@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>จองคิวตรวจ</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+</head>
+<body class="bg-slate-900 text-white min-h-screen flex items-center justify-center p-5">
+
+    <div class="max-w-md w-full">
+
+        <div class="text-center mb-6">
+            <div id="station-icon" class="text-6xl mb-2">📍</div>
+            <h1 id="station-title" class="text-3xl font-black text-blue-400">จองคิวตรวจ</h1>
+            <p class="text-slate-400 text-sm mt-1">สแกน QR Code หรือบาร์โค้ด CN บนใบคิว เพื่อเข้าคิวที่จุดนี้</p>
+        </div>
+
+        <div class="bg-slate-800 border border-slate-700 rounded-2xl p-6 shadow-2xl">
+            <label class="block text-sm text-slate-400 mb-2">สแกน QR Code หรือบาร์โค้ด CN บนใบคิว</label>
+            <input type="text" id="scan-input" autofocus
+                   class="w-full bg-slate-900 border-2 border-slate-700 rounded-xl p-4 text-white text-center text-lg font-mono font-bold focus:outline-none focus:border-blue-500"
+                   placeholder="สแกนตรงนี้ (หรือพิมพ์เลขคิว)"
+                   onkeydown="if(event.key==='Enter') submitCheckin()">
+
+            <button onclick="submitCheckin()" class="w-full mt-4 bg-blue-600 hover:bg-blue-500 text-white font-bold p-4 rounded-xl transition flex items-center justify-center gap-2 text-lg">
+                <i class="fa-solid fa-ticket"></i> จองคิว
+            </button>
+        </div>
+
+        <!-- ผลลัพธ์ -->
+        <div id="result-box" class="hidden mt-5 rounded-2xl p-6 text-center border-2"></div>
+
+    </div>
+
+    <script>
+        const serverIP = "10.121.111.233";
+
+        // 🌟 กำหนดว่าหน้านี้เป็นของจุดไหน — ส่งผ่าน URL เช่น checkin.html?station=Blood หรือ checkin.html?station=Doctor_3
+        const STATION_CONFIG = {
+            Blood: { label: "ห้องเจาะเลือด", icon: "🩸" },
+            Eye: { label: "ห้องตรวจตา", icon: "👁️" },
+            Ear: { label: "ห้องตรวจหู", icon: "👂" },
+            Lung: { label: "ห้องตรวจปอด", icon: "🫁" },
+            EKG: { label: "ห้อง EKG", icon: "🫀" },
+            XRay: { label: "ห้องเอกซเรย์ (X-Ray ปอด)", icon: "🦴" },
+            Ultrasound: { label: "ห้องอัลตราซาวด์", icon: "🩺" },
+            Mammogram: { label: "ห้องแมมโมแกรม", icon: "🎗️" },
+            OBGYN: { label: "ห้องตรวจสูติ-นรีเวช", icon: "🤰" },
+            Doctor: { label: "ห้องตรวจแพทย์ (คิวกลาง)", icon: "👨‍⚕️" },
+        };
+
+        function getStationFromURL() {
+            const params = new URLSearchParams(window.location.search);
+            return params.get('station') || 'Blood';
+        }
+
+        const currentStation = getStationFromURL();
+        const config = STATION_CONFIG[currentStation] || { label: currentStation, icon: "📍" };
+        document.getElementById("station-icon").innerText = config.icon;
+        document.getElementById("station-title").innerText = `จองคิว: ${config.label}`;
+
+        async function submitCheckin() {
+            const scanInput = document.getElementById("scan-input");
+            const code = scanInput.value.trim();
+            const resultBox = document.getElementById("result-box");
+
+            if (!code) return;
+
+            resultBox.className = "mt-5 rounded-2xl p-6 text-center border-2 border-slate-600 bg-slate-800";
+            resultBox.innerHTML = `<i class="fa-solid fa-spinner animate-spin text-2xl"></i>`;
+            resultBox.classList.remove("hidden");
+
+            try {
+                const res = await fetch(`http://${serverIP}:8000/api/checkin-station`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ code, station_name: currentStation })
+                });
+
+                const data = await res.json();
+
+                if (!res.ok) {
+                    throw new Error(data.detail || "จองคิวไม่สำเร็จ");
+                }
+
+                resultBox.className = "mt-5 rounded-2xl p-6 text-center border-2 border-emerald-500 bg-emerald-900/30";
+                resultBox.innerHTML = `
+                    <div class="text-4xl mb-2">✅</div>
+                    <p class="text-2xl font-black text-emerald-300">${data.queue_number}</p>
+                    <p class="text-slate-300 mt-1">${data.patient_name || ''}</p>
+                    <p class="text-emerald-400 font-bold mt-2">เข้าคิว ${data.label} เรียบร้อยแล้ว</p>
+                    <p class="text-xs text-slate-500 mt-2">กรุณารอเรียกคิวจากหน้าจอ</p>
+                `;
+
+            } catch (err) {
+                resultBox.className = "mt-5 rounded-2xl p-6 text-center border-2 border-red-500 bg-red-900/30";
+                resultBox.innerHTML = `
+                    <div class="text-4xl mb-2">⚠️</div>
+                    <p class="text-red-300 font-bold">${err.message}</p>
+                `;
+            }
+
+            scanInput.value = "";
+            scanInput.focus();
+        }
+    </script>
+</body>
+</html>

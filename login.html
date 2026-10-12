@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>เข้าสู่ระบบ — ระบบคิวโรงพยาบาล</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+</head>
+<body class="bg-slate-900 text-white min-h-screen flex items-center justify-center p-5">
+
+    <div class="max-w-sm w-full">
+        <div class="text-center mb-6">
+            <div class="text-5xl mb-3">🏥</div>
+            <h1 class="text-2xl font-black text-blue-400">ระบบคิวโรงพยาบาล</h1>
+            <p class="text-slate-400 text-sm mt-1">กรุณาเข้าสู่ระบบก่อนใช้งาน</p>
+        </div>
+
+        <form id="login-form" class="bg-slate-800 border border-slate-700 rounded-2xl p-6 shadow-2xl space-y-4">
+            <div>
+                <label class="block text-sm text-slate-400 mb-1">ชื่อผู้ใช้</label>
+                <input type="text" id="username" required autofocus
+                       class="w-full bg-slate-900 border border-slate-700 rounded-xl p-3 text-white focus:outline-none focus:border-blue-500"
+                       placeholder="กรอกชื่อผู้ใช้">
+            </div>
+            <div>
+                <label class="block text-sm text-slate-400 mb-1">รหัสผ่าน</label>
+                <input type="password" id="password" required
+                       class="w-full bg-slate-900 border border-slate-700 rounded-xl p-3 text-white focus:outline-none focus:border-blue-500"
+                       placeholder="กรอกรหัสผ่าน">
+            </div>
+
+            <p id="error-box" class="hidden bg-red-900/50 border border-red-500 text-red-200 p-3 rounded-xl text-center text-sm font-semibold"></p>
+
+            <button type="submit" id="submit-btn"
+                    class="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold p-3 rounded-xl transition flex items-center justify-center gap-2">
+                <i class="fa-solid fa-right-to-bracket"></i> เข้าสู่ระบบ
+            </button>
+        </form>
+
+        <p class="text-center text-xs text-slate-600 mt-6">Developed by Anurak Butsri</p>
+    </div>
+
+    <script>
+        // 🌐 ใช้ที่อยู่ของหน้านี้เอง (origin) แทนการฝัง IP ตายตัว
+        // กันปัญหา cookie ถูกบล็อกตอนเปิดหน้าด้วย URL ที่ไม่ตรงกับ IP ที่ฝังไว้ (เช่น localhost vs 10.121.111.233)
+        const API_BASE = window.location.origin;
+
+        function getRedirectTarget() {
+            const params = new URLSearchParams(window.location.search);
+            return params.get('redirect') || 'index.html';
+        }
+
+        document.getElementById("login-form").addEventListener("submit", async (e) => {
+            e.preventDefault();
+
+            const username = document.getElementById("username").value.trim();
+            const password = document.getElementById("password").value;
+            const errorBox = document.getElementById("error-box");
+            const submitBtn = document.getElementById("submit-btn");
+
+            errorBox.classList.add("hidden");
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = `<i class="fa-solid fa-spinner animate-spin"></i> กำลังเข้าสู่ระบบ...`;
+
+            try {
+                const res = await fetch(`${API_BASE}/api/login`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ username, password })
+                });
+
+                const data = await res.json();
+
+                if (!res.ok) {
+                    throw new Error(data.detail || "เข้าสู่ระบบไม่สำเร็จ");
+                }
+
+                // เข้าสู่ระบบสำเร็จ — เก็บชื่อผู้ใช้ไว้แสดงผลใน localStorage (ใช้แค่แสดงผล ไม่ใช่ตัวยืนยันตัวตนจริง)
+                localStorage.setItem("display_name", data.full_name || data.username);
+                window.location.href = getRedirectTarget();
+
+            } catch (err) {
+                errorBox.innerText = `⚠️ ${err.message}`;
+                errorBox.classList.remove("hidden");
+                submitBtn.disabled = false;
+                submitBtn.innerHTML = `<i class="fa-solid fa-right-to-bracket"></i> เข้าสู่ระบบ`;
+            }
+        });
+    </script>
+</body>
+</html>

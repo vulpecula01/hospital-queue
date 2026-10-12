@@ -1,0 +1,734 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ระบบแสดงคิวหลัก (TV Dashboard)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Kanit:wght@400;500;600;700;800&family=Orbitron:wght@500;700;800;900&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg: #06090f;
+            --panel: #101828;
+            --panel-2: #16203a;
+            --border: #26324a;
+            --text-dim: #8ea0c2;
+        }
+        body { font-family: 'Kanit', sans-serif; background: var(--bg); }
+        .font-display { font-family: 'Orbitron', 'Kanit', sans-serif; }
+
+        @keyframes callGlow {
+            0%, 100% { box-shadow: 0 0 0 0 rgba(251,191,36,0); }
+            50%      { box-shadow: 0 0 55px 10px rgba(251,191,36,0.55); }
+        }
+        @keyframes callFlash {
+            0%   { background-color: rgba(251,191,36,0.30); }
+            100% { background-color: transparent; }
+        }
+        @keyframes numberPop {
+            0%   { transform: scale(0.85); opacity: 0.4; }
+            60%  { transform: scale(1.06); }
+            100% { transform: scale(1); opacity: 1; }
+        }
+        .calling-card {
+            animation: callGlow 1.3s ease-in-out infinite;
+            border-color: #fbbf24 !important;
+            transform: scale(1.015);
+            z-index: 5;
+        }
+        .calling-flash { animation: callFlash 1.2s ease-out; }
+        .number-pop { animation: numberPop 0.4s ease-out; }
+
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+        .station-card { transition: transform 0.3s ease, box-shadow 0.3s ease, border-color 0.3s ease; }
+    </style>
+</head>
+<body class="text-white overflow-hidden h-screen flex flex-col">
+
+    <!-- Header Section -->
+    <div class="bg-gradient-to-r from-[#0a1120] via-[#0d1730] to-[#0a1120] px-6 py-3 flex justify-between items-center border-b border-blue-500/30 shadow-lg">
+        <div class="flex items-center gap-4">
+            <div class="w-11 h-11 rounded-xl bg-blue-500/15 border border-blue-400/40 flex items-center justify-center text-2xl">🏥</div>
+            <div>
+                <h1 class="text-xl font-extrabold text-blue-300 leading-tight">บอร์ดแสดงคิวผู้ป่วย</h1>
+                <p id="today-date" class="text-xs text-slate-500 font-medium">--</p>
+            </div>
+            <span id="conn-badge" class="flex items-center gap-1.5 text-xs font-bold px-2.5 py-1 rounded-full bg-slate-800 border border-slate-700 text-slate-400">
+                <span id="conn-dot" class="w-2 h-2 rounded-full bg-slate-500"></span>
+                <span id="status-text">กำลังเชื่อมต่อ...</span>
+            </span>
+        </div>
+
+        <div class="flex items-center gap-3">
+            <span class="bg-blue-600/90 text-white px-3 py-1.5 rounded-lg border border-blue-400/60 text-xs font-bold">A = นัดหมาย</span>
+            <span class="bg-amber-600/90 text-white px-3 py-1.5 rounded-lg border border-amber-400/60 text-xs font-bold">W = Walk-in</span>
+            <span class="bg-teal-600/90 text-white px-3 py-1.5 rounded-lg border border-teal-400/60 text-xs font-bold">M = หน่วยเคลื่อนที่</span>
+        </div>
+
+        <div class="flex items-center gap-2">
+            <details class="relative">
+                <summary class="list-none cursor-pointer bg-slate-800 hover:bg-slate-700 border border-slate-600 text-slate-300 text-xs font-bold px-3 py-1.5 rounded-lg">⚙️ ตั้งค่าเสียง</summary>
+                <div class="absolute right-0 mt-2 w-64 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl p-3 space-y-2 z-50 text-xs">
+                    <button onclick="testSound()" class="w-full bg-purple-600 hover:bg-purple-500 text-white font-bold px-3 py-2 rounded-lg">🔊 ทดสอบเสียง</button>
+                </div>
+            </details>
+            <button onclick="document.getElementById('debug-overlay').classList.toggle('hidden')" class="bg-slate-800 hover:bg-slate-700 border border-slate-600 text-slate-400 text-xs font-bold px-2.5 py-1.5 rounded-lg">🐞</button>
+            <div id="clock" class="font-display text-2xl font-bold text-slate-200 tabular-nums">--:--:--</div>
+        </div>
+    </div>
+
+    <!-- Main Grid Stations (3 x 3 = 9 สถานีหลัก) -->
+    <div class="grid grid-cols-4 grid-rows-2 gap-3 p-3 flex-1 overflow-hidden" style="background: radial-gradient(circle at 50% 0%, #0c1424 0%, #05070c 70%);">
+
+        <!-- 2. เจาะเลือด -->
+        <div id="card-Blood" class="station-card bg-gradient-to-b from-[#101828] to-[#0b1220] border-l-4 border border-slate-700/70 rounded-2xl flex flex-col p-4 shadow-lg gap-1.5 min-h-0" style="border-left-color:#fb923c">
+            <div class="flex justify-between items-center">
+                <span class="text-base font-bold text-orange-300 flex items-center gap-2">🩸 เจาะเลือด</span>
+                <div class="text-right">
+                    <span class="text-xs bg-slate-800 px-2.5 py-1 rounded-full text-gray-300 font-bold">รอ <span id="wait-count-Blood" class="text-orange-300">0</span> คิว</span>
+                    <div id="wait-avg-Blood" class="text-[10px] text-slate-500 font-semibold mt-0.5"></div>
+                </div>
+            </div>
+            <div id="q-Blood" class="font-display text-center text-6xl font-black text-white py-3 bg-black/40 rounded-xl border border-slate-700/60">-</div>
+            <div class="flex-1 flex flex-col justify-end min-h-0">
+                <p class="text-[10px] uppercase tracking-wider text-slate-500 font-bold mb-1.5">คิวถัดไป</p>
+                <div id="waiting-Blood" class="flex flex-wrap gap-1.5 items-center min-h-[30px]"></div>
+            </div>
+        </div>
+
+        <!-- 3. ตรวจตา -->
+        <div id="card-Eye" class="station-card bg-gradient-to-b from-[#101828] to-[#0b1220] border-l-4 border border-slate-700/70 rounded-2xl flex flex-col p-4 shadow-lg gap-1.5 min-h-0" style="border-left-color:#c084fc">
+            <div class="flex justify-between items-center">
+                <span class="text-base font-bold text-purple-300 flex items-center gap-2">👁️ ตรวจตา</span>
+                <div class="text-right">
+                    <span class="text-xs bg-slate-800 px-2.5 py-1 rounded-full text-gray-300 font-bold">รอ <span id="wait-count-Eye" class="text-purple-300">0</span> คิว</span>
+                    <div id="wait-avg-Eye" class="text-[10px] text-slate-500 font-semibold mt-0.5"></div>
+                </div>
+            </div>
+            <div id="q-Eye" class="font-display text-center text-6xl font-black text-white py-3 bg-black/40 rounded-xl border border-slate-700/60">-</div>
+            <div class="flex-1 flex flex-col justify-end min-h-0">
+                <p class="text-[10px] uppercase tracking-wider text-slate-500 font-bold mb-1.5">คิวถัดไป</p>
+                <div id="waiting-Eye" class="flex flex-wrap gap-1.5 items-center min-h-[30px]"></div>
+            </div>
+        </div>
+
+        <!-- 4. ตรวจหู -->
+        <div id="card-Ear" class="station-card bg-gradient-to-b from-[#101828] to-[#0b1220] border-l-4 border border-slate-700/70 rounded-2xl flex flex-col p-4 shadow-lg gap-1.5 min-h-0" style="border-left-color:#fbbf24">
+            <div class="flex justify-between items-center">
+                <span class="text-base font-bold text-amber-300 flex items-center gap-2">👂 ตรวจหู</span>
+                <div class="text-right">
+                    <span class="text-xs bg-slate-800 px-2.5 py-1 rounded-full text-gray-300 font-bold">รอ <span id="wait-count-Ear" class="text-amber-300">0</span> คิว</span>
+                    <div id="wait-avg-Ear" class="text-[10px] text-slate-500 font-semibold mt-0.5"></div>
+                </div>
+            </div>
+            <div id="q-Ear" class="font-display text-center text-6xl font-black text-white py-3 bg-black/40 rounded-xl border border-slate-700/60">-</div>
+            <div class="flex-1 flex flex-col justify-end min-h-0">
+                <p class="text-[10px] uppercase tracking-wider text-slate-500 font-bold mb-1.5">คิวถัดไป</p>
+                <div id="waiting-Ear" class="flex flex-wrap gap-1.5 items-center min-h-[30px]"></div>
+            </div>
+        </div>
+
+        <!-- 5. ตรวจปอด -->
+        <div id="card-Lung" class="station-card bg-gradient-to-b from-[#101828] to-[#0b1220] border-l-4 border border-slate-700/70 rounded-2xl flex flex-col p-4 shadow-lg gap-1.5 min-h-0" style="border-left-color:#22d3ee">
+            <div class="flex justify-between items-center">
+                <span class="text-base font-bold text-cyan-300 flex items-center gap-2">🫁 ตรวจปอด</span>
+                <div class="text-right">
+                    <span class="text-xs bg-slate-800 px-2.5 py-1 rounded-full text-gray-300 font-bold">รอ <span id="wait-count-Lung" class="text-cyan-300">0</span> คิว</span>
+                    <div id="wait-avg-Lung" class="text-[10px] text-slate-500 font-semibold mt-0.5"></div>
+                </div>
+            </div>
+            <div id="q-Lung" class="font-display text-center text-6xl font-black text-white py-3 bg-black/40 rounded-xl border border-slate-700/60">-</div>
+            <div class="flex-1 flex flex-col justify-end min-h-0">
+                <p class="text-[10px] uppercase tracking-wider text-slate-500 font-bold mb-1.5">คิวถัดไป</p>
+                <div id="waiting-Lung" class="flex flex-wrap gap-1.5 items-center min-h-[30px]"></div>
+            </div>
+        </div>
+
+        <!-- 6. ตรวจ EKG -->
+        <div id="card-EKG" class="station-card bg-gradient-to-b from-[#101828] to-[#0b1220] border-l-4 border border-slate-700/70 rounded-2xl flex flex-col p-4 shadow-lg gap-1.5 min-h-0" style="border-left-color:#818cf8">
+            <div class="flex justify-between items-center">
+                <span class="text-base font-bold text-indigo-300 flex items-center gap-2">🫀 ตรวจ EKG</span>
+                <div class="text-right">
+                    <span class="text-xs bg-slate-800 px-2.5 py-1 rounded-full text-gray-300 font-bold">รอ <span id="wait-count-EKG" class="text-indigo-300">0</span> คิว</span>
+                    <div id="wait-avg-EKG" class="text-[10px] text-slate-500 font-semibold mt-0.5"></div>
+                </div>
+            </div>
+            <div id="q-EKG" class="font-display text-center text-6xl font-black text-white py-3 bg-black/40 rounded-xl border border-slate-700/60">-</div>
+            <div class="flex-1 flex flex-col justify-end min-h-0">
+                <p class="text-[10px] uppercase tracking-wider text-slate-500 font-bold mb-1.5">คิวถัดไป</p>
+                <div id="waiting-EKG" class="flex flex-wrap gap-1.5 items-center min-h-[30px]"></div>
+            </div>
+        </div>
+
+        <!-- 6. แผนก X-Ray (รวม X-Ray / Ultrasound / Mammogram ไว้ในการ์ดเดียว — ระบบข้างในแยกคิวกันเหมือนเดิม) -->
+        <div class="station-card col-span-2 bg-gradient-to-b from-[#101828] to-[#0b1220] border-l-4 border border-slate-700/70 rounded-2xl flex flex-col p-4 shadow-lg gap-2 min-h-0" style="border-left-color:#fb7185">
+            <span class="text-base font-bold text-rose-300 flex items-center gap-2">🦴 แผนก X-Ray</span>
+            <div class="grid grid-cols-3 gap-2.5 flex-1 min-h-0">
+
+                <!-- X-Ray (ปอด) -->
+                <div id="card-XRay" class="flex flex-col bg-black/30 rounded-xl border border-slate-700/60 p-2.5 min-h-0">
+                    <span class="text-xs font-bold text-rose-200 mb-1">🦴 X-Ray</span>
+                    <div id="q-XRay" class="font-display text-center text-4xl font-black text-white py-2 bg-black/40 rounded-lg border border-slate-700/60">-</div>
+                    <div class="flex items-center justify-between mt-1">
+                        <span class="text-[10px] text-gray-300 font-bold">รอ <span id="wait-count-XRay" class="text-rose-300">0</span> คิว</span>
+                        <span id="wait-avg-XRay" class="text-[9px] text-slate-500 font-semibold"></span>
+                    </div>
+                    <div id="waiting-XRay" class="flex flex-wrap gap-1 items-center mt-1 min-h-[24px]"></div>
+                </div>
+
+                <!-- Ultrasound -->
+                <div id="card-Ultrasound" class="flex flex-col bg-black/30 rounded-xl border border-slate-700/60 p-2.5 min-h-0">
+                    <span class="text-xs font-bold text-sky-200 mb-1">🩺 Ultrasound</span>
+                    <div id="q-Ultrasound" class="font-display text-center text-4xl font-black text-white py-2 bg-black/40 rounded-lg border border-slate-700/60">-</div>
+                    <div class="flex items-center justify-between mt-1">
+                        <span class="text-[10px] text-gray-300 font-bold">รอ <span id="wait-count-Ultrasound" class="text-sky-300">0</span> คิว</span>
+                        <span id="wait-avg-Ultrasound" class="text-[9px] text-slate-500 font-semibold"></span>
+                    </div>
+                    <div id="waiting-Ultrasound" class="flex flex-wrap gap-1 items-center mt-1 min-h-[24px]"></div>
+                </div>
+
+                <!-- Mammogram -->
+                <div id="card-Mammogram" class="flex flex-col bg-black/30 rounded-xl border border-slate-700/60 p-2.5 min-h-0">
+                    <span class="text-xs font-bold text-fuchsia-200 mb-1">🎗️ Mammogram</span>
+                    <div id="q-Mammogram" class="font-display text-center text-4xl font-black text-white py-2 bg-black/40 rounded-lg border border-slate-700/60">-</div>
+                    <div class="flex items-center justify-between mt-1">
+                        <span class="text-[10px] text-gray-300 font-bold">รอ <span id="wait-count-Mammogram" class="text-fuchsia-300">0</span> คิว</span>
+                        <span id="wait-avg-Mammogram" class="text-[9px] text-slate-500 font-semibold"></span>
+                    </div>
+                    <div id="waiting-Mammogram" class="flex flex-wrap gap-1 items-center mt-1 min-h-[24px]"></div>
+                </div>
+
+            </div>
+        </div>
+
+        <!-- 8. พบแพทย์ -->
+        <div id="card-Doctor" class="station-card bg-gradient-to-b from-[#101828] to-[#0b1220] border-l-4 border border-slate-700/70 rounded-2xl flex flex-col p-4 shadow-lg gap-1.5 min-h-0" style="border-left-color:#f472b6">
+            <div class="flex justify-between items-center">
+                <span class="text-base font-bold text-pink-300 flex items-center gap-2">👨‍⚕️ พบแพทย์</span>
+                <div class="text-right">
+                    <span class="text-xs bg-slate-800 px-2.5 py-1 rounded-full text-gray-300 font-bold">รอ <span id="wait-count-Doctor" class="text-pink-300">0</span> คิว</span>
+                    <div id="wait-avg-Doctor" class="text-[10px] text-slate-500 font-semibold mt-0.5"></div>
+                </div>
+            </div>
+            <div id="q-Doctor" class="font-display text-center text-6xl font-black text-white py-3 bg-black/40 rounded-xl border border-slate-700/60">-</div>
+            <div class="flex-1 flex flex-col justify-end min-h-0">
+                <p class="text-[10px] uppercase tracking-wider text-slate-500 font-bold mb-1.5">คิวถัดไป</p>
+                <div id="waiting-Doctor" class="flex flex-wrap gap-1.5 items-center min-h-[30px]"></div>
+            </div>
+        </div>
+
+        <div id="card-OBGYN" class="station-card bg-gradient-to-b from-[#101828] to-[#0b1220] border-l-4 border border-slate-700/70 rounded-2xl flex flex-col p-4 shadow-lg gap-1.5 min-h-0" style="border-left-color:#f9a8d4">
+            <div class="flex justify-between items-center">
+                <span class="text-base font-bold text-pink-200 flex items-center gap-2">🤰 สูติ-นรีเวช</span>
+                <div class="text-right">
+                    <span class="text-xs bg-slate-800 px-2.5 py-1 rounded-full text-gray-300 font-bold">รอ <span id="wait-count-OBGYN" class="text-pink-200">0</span> คิว</span>
+                    <div id="wait-avg-OBGYN" class="text-[10px] text-slate-500 font-semibold mt-0.5"></div>
+                </div>
+            </div>
+            <div id="q-OBGYN" class="font-display text-center text-6xl font-black text-white py-3 bg-black/40 rounded-xl border border-slate-700/60">-</div>
+            <div class="flex-1 flex flex-col justify-end min-h-0">
+                <p class="text-[10px] uppercase tracking-wider text-slate-500 font-bold mb-1.5">คิวถัดไป</p>
+                <div id="waiting-OBGYN" class="flex flex-wrap gap-1.5 items-center min-h-[30px]"></div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- Status Footer -->
+    <div class="bg-black/40 p-1.5 text-center text-[11px] text-slate-600 border-t border-slate-800/70 flex justify-between px-6">
+        <div>ระบบคิวโรงพยาบาล — อัปเดตอัตโนมัติแบบ Real-time</div>
+        <div>Server: 10.121.111.233:8000</div>
+    </div>
+
+    <!-- 🐞 Debug Panel — กดปุ่มแมลงมุมขวาบนเพื่อเปิด/ปิด ใช้ดู log ตรงบนจอ TV โดยไม่ต้องเปิด DevTools -->
+    <div id="debug-overlay" class="hidden fixed bottom-14 right-3 w-96 max-h-64 overflow-y-auto bg-black/90 border border-slate-600 rounded-xl p-3 text-[11px] font-mono text-lime-300 z-50 leading-relaxed">
+        <div id="debug-panel">รอ log...</div>
+    </div>
+
+    <!-- 🔊 Overlay "แตะเพื่อเปิดเสียง" — จอ TV มักเปิดทิ้งไว้แบบไม่มีใครคลิกอะไรเลย (kiosk mode)
+         เบราว์เซอร์ต้องมีการคลิก/แตะจริงอย่างน้อย 1 ครั้งก่อนถึงจะอนุญาตให้เล่นเสียงได้ (นโยบายความปลอดภัย)
+         คลิกครั้งเดียวตรงนี้จะปลดล็อกเสียงให้ใช้งานได้ตลอด session โดยไม่ต้องคลิกซ้ำอีก -->
+    <div id="enable-sound-overlay" class="fixed inset-0 bg-black/85 flex items-center justify-center z-[9999] cursor-pointer" onclick="enableSoundOnce()">
+        <div class="text-center">
+            <div class="text-7xl mb-4 animate-pulse">🔊</div>
+            <p class="text-2xl font-bold text-white">แตะหน้าจอเพื่อเปิดใช้งานเสียงประกาศ</p>
+            <p class="text-sm text-slate-400 mt-2">(ต้องแตะครั้งเดียวตอนเปิดจอ ระบบจะจำไว้ตลอดการใช้งาน)</p>
+        </div>
+    </div>
+
+    <script>
+        const serverIP = "10.121.111.233";
+        const ws = new WebSocket(`ws://${serverIP}:8000/ws/queue`);
+        const statusText = document.getElementById("status-text");
+        const connDot = document.getElementById("conn-dot");
+        const connBadge = document.getElementById("conn-badge");
+
+        // ⏱️ เวลาเฉลี่ยที่ใช้ต่อคนของแต่ละจุด (นาที) — อ้างอิงจาก Patient Journey จริงของโรงพยาบาล
+        const AVG_MINUTES = {
+            Blood: 3, Eye: 10, Ear: 10, Lung: 10, EKG: 5, XRay: 5, Ultrasound: 20, Mammogram: 15, OBGYN: 20, Doctor: 10
+        };
+
+        // 🧠 Memory ของจุดบริการ
+        let memoryQueues = {
+            "Blood": "-", "Eye": "-", "Ear": "-", 
+            "Lung": "-", "EKG": "-", "XRay": "-", "Ultrasound": "-", "Mammogram": "-", "OBGYN": "-", "Doctor": "-"
+        };
+        [1, 2, 3, 4, 5, 6, 8].forEach(i => {
+            memoryQueues[`Doctor_${i}`] = "-";
+        });
+
+        // 🖥️ Debug Panel บนจอ — เพราะ TV ไม่มี Console ให้เปิดดู ต้องเห็น log ตรงบนจอแทน
+        const debugLog = [];
+        function dlog(msg) {
+            const time = new Date().toLocaleTimeString('th-TH');
+            debugLog.unshift(`[${time}] ${msg}`);
+            if (debugLog.length > 25) debugLog.pop();
+            const panel = document.getElementById("debug-panel");
+            if (panel) panel.innerHTML = debugLog.join('<br>');
+            console.log(msg);
+        }
+
+        // 🔊 เสียงประกาศ — เล่นจากคลิปเสียงที่สร้างไว้ล่วงหน้าแล้ว (tts_clips/) เรียงต่อกันเป็นประโยค
+        // ใช้วิธีนี้เพราะเครื่อง Server ไม่มีอินเทอร์เน็ต ไม่สามารถสร้างเสียงสดได้
+        //
+        // 🚀 เพิ่มความเร็ว 2 ทาง:
+        //   1) Preload ไฟล์เสียงทุกไฟล์ไว้ในหน่วยความจำตั้งแต่เปิดหน้า (ตัดเวลารอโหลดไฟล์ตอนสลับคำแต่ละคำ)
+        //   2) ตัดความเงียบหัว-ท้ายคลิปออก (ดู trimSilence ด้านล่าง) ให้ต่อคำติดกันโดยไม่ต้องเร่งความเร็ว
+        const PLAYBACK_RATE = 1.0; // ⚠️ ห้ามลดค่านี้ต่ำกว่า 1.0! การลดความเร็วด้วย playbackRate จะทำให้ระดับเสียงต่ำลงด้วย
+                                     // (เสียงผู้หญิงจะกลายเป็นเสียงทุ้มเหมือนผู้ชาย) ถ้าอยากให้พูดช้าลง
+                                     // ให้ไปปรับค่า CLIP_RATE ใน generate_tts_clips.py แล้วสร้างไฟล์เสียงใหม่แทน
+
+        const CLIP_NAMES = [
+            "prefix",
+            "digit_0", "digit_1", "digit_2", "digit_3", "digit_4",
+            "digit_5", "digit_6", "digit_7", "digit_8", "digit_9",
+            "letter_A", "letter_W", "letter_M",
+            "loc_Blood", "loc_Eye", "loc_Ear", "loc_Lung", "loc_EKG", "loc_XRay", "loc_Ultrasound", "loc_Mammogram", "loc_OBGYN", "loc_Doctor",
+            "loc_Doctor_1", "loc_Doctor_2", "loc_Doctor_3", "loc_Doctor_4",
+            "loc_Doctor_5", "loc_Doctor_6", "loc_Doctor_8"
+        ];
+
+        // 🎧 ใช้ Web Audio API แทน <audio> ธรรมดา — ต่อคลิปทุกคำเป็นเสียงเดียวก่อนเล่น
+        // (เล่นทีเดียวจบ ไม่เล่นทีละไฟล์แยกกัน ซึ่งมีช่วงหน่วงจากการสลับไฟล์สะสม)
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const clipBuffers = {}; // key: "th/prefix" -> AudioBuffer (ตัดความเงียบหัว-ท้ายออกแล้ว พร้อมเล่น)
+
+        // ตัดความเงียบที่หัว/ท้ายไฟล์ออก — ไฟล์ TTS แต่ละไฟล์มักมี silence แปะไว้เอง
+        // พอเอามาต่อกันหลายคำ ความเงียบพวกนี้จะสะสมกลายเป็นช่วงหน่วงที่ได้ยินชัดเจน
+        function trimSilence(buffer, threshold = 0.012) {
+            const data = buffer.getChannelData(0);
+            let start = 0;
+            let end = buffer.length - 1;
+
+            while (start < end && Math.abs(data[start]) < threshold) start++;
+            while (end > start && Math.abs(data[end]) < threshold) end--;
+
+            if (end - start < buffer.sampleRate * 0.02) return buffer; // กันตัดจนแทบไม่เหลือเสียงเลย (คลิปสั้นผิดปกติ)
+
+            const trimmed = audioCtx.createBuffer(buffer.numberOfChannels, end - start + 1, buffer.sampleRate);
+            for (let ch = 0; ch < buffer.numberOfChannels; ch++) {
+                trimmed.getChannelData(ch).set(buffer.getChannelData(ch).subarray(start, end + 1));
+            }
+            return trimmed;
+        }
+
+        async function enableSoundOnce() {
+            try {
+                await audioCtx.resume();
+                dlog(`🔊 ปลดล็อกเสียงสำเร็จจากการแตะหน้าจอ — state: ${audioCtx.state}`);
+            } catch (err) {
+                dlog(`❌ ปลดล็อกเสียงไม่สำเร็จ: ${err.message}`);
+            }
+            document.getElementById("enable-sound-overlay").style.display = "none";
+        }
+
+        async function preloadClips() {
+            dlog("📥 กำลังโหลดคลิปเสียงทั้งหมดไว้ล่วงหน้า...");
+            let loaded = 0, failed = 0;
+            const failedList = [];
+            for (const lang of ["th", "en"]) {
+                for (const name of CLIP_NAMES) {
+                    const key = `${lang}/${name}`;
+                    try {
+                        const res = await fetch(`http://${serverIP}:8000/tts_clips/${lang}/${name}.mp3`);
+                        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+                        // 🛡️ กันกรณี server ตอบ 200 แต่ส่งไฟล์ผิด (เช่น index.html แทนไฟล์เสียงที่หาไม่เจอ)
+                        const contentType = res.headers.get("content-type") || "";
+                        if (contentType.includes("text/html")) {
+                            throw new Error(`ได้ HTML กลับมาแทนไฟล์เสียง (ไฟล์นี้อาจไม่มีอยู่จริงบน server)`);
+                        }
+
+                        const arrayBuffer = await res.arrayBuffer();
+                        const decoded = await audioCtx.decodeAudioData(arrayBuffer);
+                        clipBuffers[key] = trimSilence(decoded);
+                        loaded++;
+                    } catch (err) {
+                        failed++;
+                        failedList.push(`${key} (${err.message})`);
+                    }
+                }
+            }
+            if (failed > 0) {
+                dlog(`📥 โหลดคลิปเสร็จ: สำเร็จ ${loaded} ไฟล์, ล้มเหลว ${failed} ไฟล์`);
+                dlog(`❌ ไฟล์ที่หาย: ${failedList.slice(0, 10).join(' | ')}${failedList.length > 10 ? ` (และอีก ${failedList.length - 10} ไฟล์)` : ''}`);
+            } else {
+                dlog(`📥 โหลดคลิปเสร็จ: สำเร็จครบทั้ง ${loaded} ไฟล์ ✅`);
+            }
+        }
+        preloadClips();
+
+        // ต่อ AudioBuffer หลายชิ้นเป็นชิ้นเดียว เว้นช่วงเงียบสั้นๆ ที่เราคุมเองระหว่างคำ (ปรับได้ที่ gapSeconds)
+        function concatenateBuffers(buffers, gapSeconds = 0.03) {
+            const sampleRate = buffers[0].sampleRate;
+            const numChannels = Math.max(...buffers.map(b => b.numberOfChannels));
+            const gapSamples = Math.floor(gapSeconds * sampleRate);
+
+            let totalLength = 0;
+            buffers.forEach((b, i) => {
+                totalLength += b.length;
+                if (i < buffers.length - 1) totalLength += gapSamples;
+            });
+
+            const outBuffer = audioCtx.createBuffer(numChannels, totalLength, sampleRate);
+            for (let ch = 0; ch < numChannels; ch++) {
+                const outData = outBuffer.getChannelData(ch);
+                let offset = 0;
+                buffers.forEach((b, i) => {
+                    const inData = b.getChannelData(Math.min(ch, b.numberOfChannels - 1));
+                    outData.set(inData, offset);
+                    offset += b.length + (i < buffers.length - 1 ? gapSamples : 0);
+                });
+            }
+            return outBuffer;
+        }
+
+        // 📋 คิวประกาศ — ถ้ามีการเรียกคิวหลายจุดพร้อมกัน จะต่อคิวพูดทีละอันจนจบ
+        // แทนที่จะเล่นแทรกทับกัน (อันเก่าโดนตัดหายไปกลางคัน) ให้รอเล่นให้จบก่อนแล้วค่อยพูดอันถัดไป
+        let announcementQueue = [];
+        let isAnnouncing = false;
+
+        function playClipSequence(lang, clipNames) {
+            announcementQueue.push({ lang, clipNames });
+            dlog(`📋 เพิ่มเข้าคิวประกาศ (รอพูดอยู่ ${announcementQueue.length} รายการ): ${clipNames.join(', ')}`);
+            if (!isAnnouncing) {
+                playNextAnnouncement();
+            }
+        }
+
+        async function playNextAnnouncement() {
+            if (announcementQueue.length === 0) {
+                isAnnouncing = false;
+                return;
+            }
+            isAnnouncing = true;
+
+            const { lang, clipNames } = announcementQueue.shift();
+            dlog(`🗣️ กำลังพูด (${lang}): ${clipNames.join(', ')}`);
+
+            const buffers = clipNames
+                .map(name => clipBuffers[`${lang}/${name}`])
+                .filter(Boolean);
+
+            if (buffers.length === 0) {
+                dlog("❌ ยังไม่มีคลิปที่โหลดไว้เลย (รอ preload เสร็จก่อน หรือเช็คไฟล์เสียงบน server) — ข้ามไปตัวถัดไป");
+                playNextAnnouncement();
+                return;
+            }
+            if (buffers.length !== clipNames.length) {
+                dlog(`⚠️ บางคลิปหายไป (${clipNames.length - buffers.length} ไฟล์) จะข้ามคำที่หายไปก่อน`);
+            }
+
+            // 🐛 แก้บั๊กสำคัญ: เดิมเรียก audioCtx.resume() แบบไม่รอ (ไม่ await) แล้วเริ่มเล่นเสียงทันที
+            // ทำให้บางครั้งเสียง "ถูกกำหนดให้เล่น" ไปแล้วตั้งแต่ context ยังไม่ทัน resume จริง (ยัง suspended อยู่)
+            // log เลยแสดงว่า "กำลังพูด" ปกติ (โค้ดรันผ่านหมด ไม่มี error) แต่ไม่มีเสียงออกจริงเพราะ context ยังไม่เปิด
+            if (audioCtx.state === "suspended") {
+                dlog("⏳ AudioContext ยัง suspended อยู่ กำลังพยายาม resume()...");
+                try {
+                    await audioCtx.resume();
+                    dlog(`✅ resume() สำเร็จ — state ตอนนี้: ${audioCtx.state}`);
+                } catch (err) {
+                    dlog(`❌ resume() ไม่สำเร็จ: ${err.message}`);
+                }
+            }
+
+            const combined = concatenateBuffers(buffers, 0.03);
+            const source = audioCtx.createBufferSource();
+            source.buffer = combined;
+            source.playbackRate.value = PLAYBACK_RATE;
+            source.connect(audioCtx.destination);
+            source.onended = playNextAnnouncement; // พูดจบแล้วค่อยไปคิวถัดไป ไม่แทรกทับกัน
+            source.start(0);
+        }
+
+        ws.onopen = () => {
+            statusText.innerText = "Online";
+            connBadge.className = "flex items-center gap-1.5 text-xs font-bold px-2.5 py-1 rounded-full bg-emerald-500/15 border border-emerald-500/40 text-emerald-300";
+            connDot.className = "w-2 h-2 rounded-full bg-emerald-400 animate-pulse";
+            dlog("🔌 WebSocket เชื่อมต่อสำเร็จ");
+        };
+        ws.onclose = () => {
+            statusText.innerText = "Offline";
+            connBadge.className = "flex items-center gap-1.5 text-xs font-bold px-2.5 py-1 rounded-full bg-red-500/15 border border-red-500/40 text-red-300";
+            connDot.className = "w-2 h-2 rounded-full bg-red-500";
+            dlog("🔌 WebSocket ตัดการเชื่อมต่อ");
+        };
+
+        ws.onmessage = function(event) {
+            const data = JSON.parse(event.data);
+            const calls = data.current_calls || {};
+            const callNames = data.current_calls_names || {};
+            const waitingMap = data.waiting_patients || {};
+
+            const getCall = (station) => {
+                const key = Object.keys(calls).find(k => k.toLowerCase() === station.toLowerCase());
+                return key ? calls[key] : "-";
+            };
+
+            const getName = (station) => {
+                const key = Object.keys(callNames).find(k => k.toLowerCase() === station.toLowerCase());
+                return key ? (callNames[key] || "") : "";
+            };
+
+            // 🌟 จุดที่มีหลายห้องย่อยทำงานคู่ขนาน — ใช้ข้อมูลจริงจาก backend (data.multi_room_stations) แทนเลขตายตัว
+            // เพราะตอนนี้จำนวนห้อง/เครื่องของแต่ละจุดปรับได้จากหน้าตั้งค่าระบบ ไม่ใช่ค่าคงที่ในโค้ดอีกต่อไป
+            const multiRoomStations = data.multi_room_stations || {};
+            const singleRoomStations = ["OBGYN"];  // จุดที่ไม่เคยมีหลายห้องเลย (ไม่มีใน multi_room_stations)
+
+            singleRoomStations.forEach(st => {
+                processStationData(`q-${st}`, st, getCall(st), getName(st));
+            });
+
+            function renderMultiRoomCard(station, roomKeys, isCompact) {
+                const activeCalls = [];
+                roomKeys.forEach(roomKey => {
+                    const queueVal = getCall(roomKey);
+                    if (queueVal !== "-") {
+                        activeCalls.push(queueVal);
+                    }
+                    // ยังคงเช็คทีละห้องเพื่อ trigger เสียงประกาศ + เอฟเฟกต์แยกต่างหาก แม้จะเรียกพร้อมกันหลายห้องก็ตาม
+                    processStationData(null, roomKey, queueVal, getName(roomKey));
+                });
+
+                // แสดงรวมทุกเลขคิวที่กำลังถูกเรียกอยู่ตอนนี้ในการ์ดเดียว (เช่น "W001, W002" ถ้าเรียก 2 ห้องพร้อมกัน)
+                const combinedDisplay = activeCalls.length > 0 ? activeCalls.join(", ") : "-";
+                const displayEl = document.getElementById(`q-${station}`);
+                if (displayEl) {
+                    displayEl.innerText = combinedDisplay;
+                    const bigSize = isCompact ? "text-4xl" : "text-6xl";
+                    const smallSize = isCompact ? "text-xl" : "text-3xl";
+                    displayEl.classList.remove("text-blue-400", "text-amber-400", "text-white", "text-6xl", "text-3xl", "text-4xl", "text-xl");
+                    displayEl.classList.add(activeCalls.length >= 2 ? smallSize : bigSize); // ตัวเล็กลงถ้ามีหลายคิวพร้อมกัน กันล้นกล่อง
+                    displayEl.classList.add("text-white");
+                }
+                return activeCalls;
+            }
+
+            const COMPACT_STATIONS = new Set(["XRay", "Ultrasound", "Mammogram"]); // sub-box เล็กในการ์ดแผนก X-Ray
+
+            Object.entries(multiRoomStations).forEach(([station, roomKeys]) => {
+                renderMultiRoomCard(station, roomKeys, COMPACT_STATIONS.has(station));
+            });
+
+            // อัปเดตรายการ "คิวถัดไป" — จุดที่มีหลายห้องย่อยต้องรวมคิวรอจากทุกห้องย่อยเข้าด้วยกัน
+            singleRoomStations.forEach(st => {
+                updateWaitingQueueList(st, waitingMap[st] || []);
+            });
+            Object.entries(multiRoomStations).forEach(([station, roomKeys]) => {
+                let combinedWaiting = [];
+                roomKeys.forEach(roomKey => {
+                    combinedWaiting = combinedWaiting.concat(waitingMap[roomKey] || []);
+                });
+                updateWaitingQueueList(station, combinedWaiting);
+            });
+
+            if (data.recall && data.recall.queue_number && data.recall.station) {
+                handleRecall(data.recall);
+            }
+        };
+
+        // 🎯 หา card element ที่ถูกต้องของสถานี (ห้องย่อยทุกจุดใช้ card เดียวกับจุดแม่ของตัวเอง)
+        function getCardElement(stationName) {
+            const canonicalPrefixes = ["Doctor", "Blood", "Eye", "Ear", "EKG", "Lung", "XRay", "Ultrasound", "Mammogram"];
+            for (const prefix of canonicalPrefixes) {
+                if (stationName.startsWith(`${prefix}_`)) return document.getElementById(`card-${prefix}`);
+            }
+            return document.getElementById(`card-${stationName}`);
+        }
+
+        function triggerCallingEffect(stationName) {
+            const card = getCardElement(stationName);
+            if (!card) return;
+            card.classList.add("calling-card", "calling-flash");
+            setTimeout(() => card.classList.remove("calling-flash"), 1200);
+            setTimeout(() => card.classList.remove("calling-card"), 6000);
+        }
+
+        let lastRecallNonce = null;
+        function handleRecall(recall) {
+            if (recall.nonce && recall.nonce === lastRecallNonce) return;
+            lastRecallNonce = recall.nonce;
+
+            triggerCallingEffect(recall.station);
+            speakQueue(recall.queue_number, recall.station, recall.patient_name || "");
+        }
+
+        function processStationData(elementId, stationName, currentQueueFromServer, patientName) {
+            const element = elementId ? document.getElementById(elementId) : null;
+            const val = currentQueueFromServer || "-";
+            
+            if (element) {
+                element.innerText = val;
+                element.classList.remove("text-blue-400", "text-amber-400", "text-white", "text-teal-400");
+                if (val.startsWith("A")) {
+                    element.classList.add("text-blue-400");
+                } else if (val.startsWith("M")) {
+                    element.classList.add("text-teal-400");
+                } else if (val.startsWith("W")) {
+                    element.classList.add("text-amber-400");
+                } else {
+                    element.classList.add("text-white");
+                }
+            }
+
+            if (val !== "-" && val !== memoryQueues[stationName]) {
+                memoryQueues[stationName] = val;
+
+                if (element) {
+                    element.classList.add("number-pop");
+                    setTimeout(() => element.classList.remove("number-pop"), 500);
+                }
+
+                triggerCallingEffect(stationName);
+                speakQueue(val, stationName, patientName || "");
+            } 
+            else if (val === "-") {
+                memoryQueues[stationName] = "-";
+            }
+        }
+
+        // แสดงผลคิวรอเรียก + เวลาเฉลี่ยโดยประมาณ
+        function updateWaitingQueueList(stationName, waitingArray) {
+            const listEl = document.getElementById(`waiting-${stationName}`);
+            const countEl = document.getElementById(`wait-count-${stationName}`);
+            const avgEl = document.getElementById(`wait-avg-${stationName}`);
+
+            if (countEl) countEl.innerText = waitingArray.length;
+
+            if (avgEl) {
+                if (waitingArray.length > 0) {
+                    const avgMin = AVG_MINUTES[stationName] || 5;
+                    const estimate = waitingArray.length * avgMin;
+                    avgEl.innerText = `~${estimate} นาที`;
+                } else {
+                    avgEl.innerText = "";
+                }
+            }
+
+            if (!listEl) return;
+
+            if (waitingArray.length === 0) {
+                listEl.innerHTML = `<span class="text-slate-600 text-sm italic">— ไม่มีคิวรอ —</span>`;
+                return;
+            }
+
+            const MAX_SHOW = 6;
+            const shown = waitingArray.slice(0, MAX_SHOW);
+            const extraCount = waitingArray.length - shown.length;
+
+            const chips = shown.map((item, idx) => {
+                const isA = item.queue_number.startsWith("A");
+                const isM = item.queue_number.startsWith("M");
+                const isHold = item.status === "Hold";
+                const isFirst = idx === 0;
+
+                let colorClasses;
+                if (isHold) {
+                    colorClasses = "bg-slate-600/40 text-slate-300 border-slate-500/60";
+                } else if (isA) {
+                    colorClasses = "bg-blue-500/20 text-blue-300 border-blue-400/50";
+                } else if (isM) {
+                    colorClasses = "bg-teal-500/20 text-teal-300 border-teal-400/50";
+                } else {
+                    colorClasses = "bg-amber-500/20 text-amber-300 border-amber-400/50";
+                }
+
+                const sizeClasses = isFirst
+                    ? "text-lg font-black px-3.5 py-1.5 shadow-md"
+                    : "text-sm font-bold px-2.5 py-1 opacity-80";
+
+                const holdIcon = isHold ? "⏸ " : "";
+
+                return `<span class="rounded-full border font-mono ${colorClasses} ${sizeClasses}">${holdIcon}${item.queue_number}</span>`;
+            }).join('');
+
+            const extraChip = extraCount > 0
+                ? `<span class="text-sm text-slate-400 font-bold px-2 py-1">+${extraCount} คิว</span>`
+                : '';
+
+            listEl.innerHTML = chips + extraChip;
+        }
+
+        function isEnglishName(name) {
+            if (!name) return false;
+            const hasThaiChar = /[\u0E00-\u0E7F]/.test(name);
+            if (hasThaiChar) return false;
+            const hasLatinChar = /[A-Za-z]/.test(name);
+            return hasLatinChar;
+        }
+
+        // 🌟 จุดที่มีหลายห้องย่อยทำงานคู่ขนาน (เจาะเลือด/ตา/หู/EKG/ปอด) ไม่ต้องประกาศเลขห้องย่อย
+        // พูดแค่ชื่อจุดตรวจเฉยๆ เหมือนเดิม (ต่างจากห้องหมอที่ยังประกาศเลขห้องตามปกติ)
+        const GENERIC_ANNOUNCE_PREFIXES = ["Blood_", "Eye_", "Ear_", "EKG_", "Lung_", "XRay_", "Ultrasound_", "Mammogram_"];
+        function getAnnouncementStation(stationName) {
+            for (const prefix of GENERIC_ANNOUNCE_PREFIXES) {
+                if (stationName.startsWith(prefix)) {
+                    return prefix.slice(0, -1); // ตัด "_" ท้ายออก เหลือแค่ชื่อจุดตรวจ เช่น "Blood_2" -> "Blood"
+                }
+            }
+            return stationName; // จุดอื่นๆ (รวมถึง Doctor_N) ประกาศตามชื่อเดิม
+        }
+
+        function speakQueue(queueNumber, stationName, patientName) {
+            const useEnglish = isEnglishName(patientName);
+            const lang = useEnglish ? "en" : "th";
+
+            const numberClips = queueNumber.split('').map(char => {
+                if (char.toUpperCase() === 'A') return "letter_A";
+                if (char.toUpperCase() === 'W') return "letter_W";
+                if (char.toUpperCase() === 'M') return "letter_M";
+                return `digit_${char}`;
+            });
+
+            const locationClip = `loc_${getAnnouncementStation(stationName)}`;
+            const sequence = ["prefix", ...numberClips, locationClip];
+            playClipSequence(lang, sequence);
+        }
+
+        function testSound() {
+            dlog("=== 🧪 เริ่มทดสอบเสียง ===");
+            dlog(`🔊 AudioContext state: ${audioCtx.state} | คลิปที่โหลดไว้: ${Object.keys(clipBuffers).length} ไฟล์`);
+            speakQueue("A001", "Blood", "");
+            setTimeout(() => speakQueue("W001", "XRay", "John Smith"), 5000);
+        }
+
+        const THAI_DAYS = ["อาทิตย์", "จันทร์", "อังคาร", "พุธ", "พฤหัสบดี", "ศุกร์", "เสาร์"];
+        const THAI_MONTHS = ["มกราคม","กุมภาพันธ์","มีนาคม","เมษายน","พฤษภาคม","มิถุนายน","กรกฎาคม","สิงหาคม","กันยายน","ตุลาคม","พฤศจิกายน","ธันวาคม"];
+
+        function updateClockAndDate() {
+            const now = new Date();
+            document.getElementById("clock").innerText = now.toLocaleTimeString('th-TH');
+            const dateEl = document.getElementById("today-date");
+            if (dateEl) {
+                dateEl.innerText = `วัน${THAI_DAYS[now.getDay()]}ที่ ${now.getDate()} ${THAI_MONTHS[now.getMonth()]} ${now.getFullYear() + 543}`;
+            }
+        }
+        updateClockAndDate();
+        setInterval(updateClockAndDate, 1000);
+    </script>
+</body>
+</html>

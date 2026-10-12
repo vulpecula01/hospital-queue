@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <script src="auth-check.js"></script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ตั้งค่าระบบ (Settings)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+</head>
+<body class="bg-slate-900 text-white min-h-screen p-6">
+
+    <div class="max-w-4xl mx-auto">
+
+        <div class="text-center mb-6">
+            <h1 class="text-3xl font-black text-blue-400">⚙️ ตั้งค่าระบบ</h1>
+            <p class="text-slate-400 text-sm mt-1">เฉพาะผู้ดูแลระบบ (Admin) เท่านั้น — แก้แล้วมีผลทันที ไม่ต้อง Restart</p>
+        </div>
+
+        <div id="access-denied" class="hidden bg-red-950/40 border-2 border-red-600 rounded-2xl p-6 text-center">
+            <p class="text-red-300 font-bold text-lg">🚫 หน้านี้สำหรับผู้ดูแลระบบ (Admin) เท่านั้น</p>
+        </div>
+
+        <div id="main-content" class="hidden">
+
+            <!-- ⏱️ เวลาเฉลี่ยแต่ละจุด -->
+            <div class="bg-slate-800 border border-slate-700 rounded-2xl p-5 mb-6">
+                <h2 class="font-bold text-lg mb-3 flex items-center gap-2">
+                    <i class="fa-solid fa-clock text-emerald-400"></i> เวลาเฉลี่ยต่อคน แต่ละจุด (นาที)
+                </h2>
+                <p class="text-xs text-slate-400 mb-4">ใช้คำนวณเวลารอโดยประมาณ และเป็นฐานของเกณฑ์แจ้งเตือน "รอเกินเวลา" ด้านล่าง</p>
+                <div id="avg-minutes-grid" class="grid grid-cols-2 md:grid-cols-3 gap-3"></div>
+            </div>
+
+            <!-- 🚨 เกณฑ์แจ้งเตือน -->
+            <div class="bg-slate-800 border border-slate-700 rounded-2xl p-5 mb-6">
+                <h2 class="font-bold text-lg mb-3 flex items-center gap-2">
+                    <i class="fa-solid fa-triangle-exclamation text-amber-400"></i> เกณฑ์แจ้งเตือน
+                </h2>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm text-slate-400 mb-1">ตัวคูณ "รอเกินเวลา" (เวลาเฉลี่ย × เท่านี้ = ผิดปกติ)</label>
+                        <input type="number" id="overdue-multiplier" min="1" step="0.5" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white">
+                    </div>
+                    <div>
+                        <label class="block text-sm text-slate-400 mb-1">เกณฑ์ "อาจไม่มาแล้ว" (นาทีที่พักคิวไว้)</label>
+                        <input type="number" id="noshow-threshold" min="5" step="5" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white">
+                    </div>
+                </div>
+            </div>
+
+            <!-- 🔢 จำนวนเครื่อง/ห้อง ของแต่ละจุด -->
+            <div class="bg-slate-800 border border-slate-700 rounded-2xl p-5 mb-6">
+                <h2 class="font-bold text-lg mb-3 flex items-center gap-2">
+                    <i class="fa-solid fa-hashtag text-cyan-400"></i> จำนวนเครื่อง/ห้อง ของแต่ละจุด
+                </h2>
+                <p class="text-xs text-slate-400 mb-4">
+                    ปรับได้เฉพาะจุดที่มีหลายห้องทำงานคู่ขนาน (เจาะเลือด/ตา/หู/ปอด/EKG/ห้องหมอ) — เพิ่มแล้วห้องใหม่จะเปิดใช้งานทันที
+                    ห้องหมอเว้นเลข 7 เสมอ (เป็นห้องสูตินรีเวชแยกต่างหาก) เช่น ตั้ง 8 ห้อง จะได้เลข 1,2,3,4,5,6,8,9
+                </p>
+                <div id="room-count-grid" class="grid grid-cols-2 md:grid-cols-3 gap-3"></div>
+                <p class="text-xs text-amber-400 mt-3">
+                    ⚠️ ถ้า "ลด" จำนวนห้องขณะมีคนไข้กำลังรอ/กำลังตรวจอยู่ในห้องที่จะถูกตัดออก แนะนำให้จัดการคิวที่ค้างอยู่ให้เสร็จก่อนแล้วค่อยลด
+                </p>
+            </div>
+
+            <button onclick="saveSettings()" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3 rounded-xl mb-2">
+                💾 บันทึกการตั้งค่า
+            </button>
+            <p id="save-msg" class="hidden text-center text-sm font-bold mb-6"></p>
+
+            <!-- 🚪 เปิด/ปิดห้อง-เครื่องเฉพาะ -->
+            <div class="bg-slate-800 border border-slate-700 rounded-2xl p-5">
+                <h2 class="font-bold text-lg mb-1 flex items-center gap-2">
+                    <i class="fa-solid fa-door-closed text-rose-400"></i> เปิด/ปิดห้อง-เครื่องเฉพาะ
+                </h2>
+                <p class="text-xs text-slate-400 mb-4">เช่น ห้องตรวจตามี 4 เครื่อง แต่พยาบาลลาป่วยกะทันหัน ปิดเครื่องที่ 2 ไว้ชั่วคราวได้ — ห้องที่ปิดจะเรียกคิวเข้าไม่ได้จนกว่าจะเปิดกลับ</p>
+                <div id="rooms-container" class="space-y-4"></div>
+            </div>
+
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = window.location.origin;
+
+        const STATION_LABELS_TH = {
+            Blood: "🩸 เจาะเลือด", Eye: "👁️ ตรวจตา", Ear: "👂 ตรวจหู",
+            Lung: "🫁 ตรวจปอด", EKG: "🫀 EKG", Doctor: "👨‍⚕️ ห้องตรวจแพทย์",
+            XRay: "🦴 X-Ray (ปอด)", Ultrasound: "🩺 Ultrasound", Mammogram: "🎗️ Mammogram", OBGYN: "🤰 สูติ-นรีเวช"
+        };
+
+        async function checkAdminAccess() {
+            try {
+                const res = await fetch(`${API_BASE}/api/settings`, { credentials: 'include' });
+                if (!res.ok) {
+                    document.getElementById("access-denied").classList.remove("hidden");
+                    return false;
+                }
+                document.getElementById("main-content").classList.remove("hidden");
+                return true;
+            } catch (err) {
+                document.getElementById("access-denied").classList.remove("hidden");
+                return false;
+            }
+        }
+
+        async function loadSettings() {
+            const res = await fetch(`${API_BASE}/api/settings`, { credentials: 'include' });
+            const data = await res.json();
+            const settings = data.settings;
+
+            const avgGrid = document.getElementById("avg-minutes-grid");
+            avgGrid.innerHTML = "";
+            Object.entries(settings).forEach(([key, value]) => {
+                if (!key.startsWith("avg_")) return;
+                const stationName = key.replace("avg_", "");
+                const label = STATION_LABELS_TH[stationName] || stationName;
+                const div = document.createElement("div");
+                div.innerHTML = `
+                    <label class="block text-sm text-slate-400 mb-1">${label}</label>
+                    <div class="flex items-center gap-2">
+                        <input type="number" id="setting-${key}" min="1" value="${value}" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white">
+                        <span class="text-xs text-slate-500 shrink-0">นาที</span>
+                    </div>
+                `;
+                avgGrid.appendChild(div);
+            });
+
+            document.getElementById("overdue-multiplier").value = settings.overdue_multiplier;
+            document.getElementById("noshow-threshold").value = settings.noshow_threshold_minutes;
+
+            const roomCountGrid = document.getElementById("room-count-grid");
+            roomCountGrid.innerHTML = "";
+            Object.entries(settings).forEach(([key, value]) => {
+                if (!key.startsWith("rooms_")) return;
+                const stationName = key.replace("rooms_", "");
+                const label = STATION_LABELS_TH[stationName] || stationName;
+                const div = document.createElement("div");
+                div.innerHTML = `
+                    <label class="block text-sm text-slate-400 mb-1">${label}</label>
+                    <div class="flex items-center gap-2">
+                        <input type="number" id="setting-${key}" min="1" max="20" value="${value}" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white">
+                        <span class="text-xs text-slate-500 shrink-0">ห้อง</span>
+                    </div>
+                `;
+                roomCountGrid.appendChild(div);
+            });
+        }
+
+        async function saveSettings() {
+            const saveMsg = document.getElementById("save-msg");
+            const newSettings = {
+                overdue_multiplier: parseFloat(document.getElementById("overdue-multiplier").value),
+                noshow_threshold_minutes: parseInt(document.getElementById("noshow-threshold").value),
+            };
+            document.querySelectorAll('[id^="setting-avg_"]').forEach(input => {
+                const key = input.id.replace("setting-", "");
+                newSettings[key] = parseInt(input.value);
+            });
+            document.querySelectorAll('[id^="setting-rooms_"]').forEach(input => {
+                const key = input.id.replace("setting-", "");
+                newSettings[key] = parseInt(input.value);
+            });
+
+            try {
+                const res = await fetch(`${API_BASE}/api/settings`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    credentials: "include",
+                    body: JSON.stringify({ settings: newSettings })
+                });
+                if (!res.ok) throw new Error("บันทึกไม่สำเร็จ");
+
+                await loadRooms(); // จำนวนห้องอาจเปลี่ยน ต้องรีเฟรชรายการปุ่มเปิด/ปิดห้องด้านล่างให้ตรงกัน
+
+                saveMsg.innerText = "✅ บันทึกเรียบร้อยแล้ว มีผลทันที";
+                saveMsg.className = "text-center text-sm font-bold mb-6 text-emerald-400";
+                saveMsg.classList.remove("hidden");
+                setTimeout(() => saveMsg.classList.add("hidden"), 3000);
+            } catch (err) {
+                saveMsg.innerText = `❌ ${err.message}`;
+                saveMsg.className = "text-center text-sm font-bold mb-6 text-red-400";
+                saveMsg.classList.remove("hidden");
+            }
+        }
+
+        async function loadRooms() {
+            const res = await fetch(`${API_BASE}/api/rooms`, { credentials: 'include' });
+            const data = await res.json();
+            const container = document.getElementById("rooms-container");
+            container.innerHTML = "";
+
+            Object.entries(data.rooms).forEach(([station, rooms]) => {
+                const label = STATION_LABELS_TH[station] || station;
+                const block = document.createElement("div");
+                block.innerHTML = `
+                    <p class="text-sm font-bold text-slate-300 mb-2">${label}</p>
+                    <div class="flex flex-wrap gap-2">
+                        ${rooms.map(r => {
+                            const roomNum = r.room.split('_').pop();
+                            return `
+                                <button onclick="toggleRoom('${r.room}', ${!r.is_closed})"
+                                    class="px-4 py-2 rounded-xl font-bold text-sm border-2 transition-all ${
+                                        r.is_closed
+                                            ? 'bg-red-900/40 border-red-600 text-red-300'
+                                            : 'bg-slate-900 border-slate-700 text-slate-300 hover:border-emerald-500'
+                                    }">
+                                    ${r.is_closed ? '🔒' : '🟢'} ห้อง ${roomNum}
+                                </button>
+                            `;
+                        }).join('')}
+                    </div>
+                `;
+                container.appendChild(block);
+            });
+        }
+
+        async function toggleRoom(roomName, isClosed) {
+            let reason = "";
+            if (isClosed) {
+                reason = prompt(`เหตุผลที่ปิดห้อง ${roomName} (ไม่บังคับ):`) || "";
+            }
+            try {
+                const res = await fetch(`${API_BASE}/api/toggle-room`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    credentials: "include",
+                    body: JSON.stringify({ room_name: roomName, is_closed: isClosed, reason })
+                });
+                if (!res.ok) throw new Error("ทำรายการไม่สำเร็จ");
+                loadRooms();
+            } catch (err) {
+                alert(`⚠️ ${err.message}`);
+            }
+        }
+
+        (async function init() {
+            const hasAccess = await checkAdminAccess();
+            if (hasAccess) {
+                loadSettings();
+                loadRooms();
+            }
+        })();
+    </script>
+</body>
+</html>

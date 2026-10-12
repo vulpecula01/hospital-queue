@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <title>ระบบเรียกคิวของพยาบาลประจำจุด (มีระบบประวัติ)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 p-6 font-sans">
+    <div class="max-w-6xl mx-auto bg-white p-6 rounded-2xl shadow-md border border-gray-200">
+        
+        <div class="flex justify-between items-center border-b pb-4 mb-6">
+            <div>
+                <h1 class="text-2xl font-bold text-gray-800">🩺 หน้าจัดการคิวและตรวจสอบประวัติพยาบาล</h1>
+                <p class="text-sm text-gray-500">คนไข้ที่ตรวจเสร็จแล้วจะย้ายไปจุดอื่น และบันทึกเข้าสู่ตารางประวัติทันที</p>
+            </div>
+            <div>
+                <label class="font-bold text-gray-700 mr-2">ประจำจุดตรวจ:</label>
+                <select id="station-select" onchange="changeStation()" class="p-2 border rounded-lg bg-gray-50 font-medium text-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-400">
+                    <option value="VitalSign">1. วัดสัญญาณชีพ</option>
+                    <option value="Blood">2. เจาะเลือด</option>
+                    <option value="Eye">3. ตรวจตา (Eye)</option>
+                    <option value="Ear">4. ตรวจหู (Ear)</option>
+                    <option value="Lung">5. ตรวจปอด (Lung)</option>
+                    <option value="EKG">6. ตรวจ EKG</option>
+                    <option value="Doctor">7. พบแพทย์</option>
+                    <option value="Cashier">8. การเงิน & รับยา</option>
+                </select>
+            </div>
+        </div>
+
+        <div class="bg-blue-50 border border-blue-200 p-4 rounded-xl flex justify-between items-center mb-6">
+            <div>
+                <span class="text-blue-800 font-bold">คิวปัจจุบันที่จุดนี้:</span>
+                <span id="current-active-q" class="text-3xl font-black text-blue-600 ml-2">-</span>
+            </div>
+            <button id="btn-finish" onclick="finishCurrentQueue()" disabled
+                    class="bg-green-600 hover:bg-green-700 text-white font-bold px-5 py-2 rounded-lg shadow disabled:opacity-50 disabled:cursor-not-allowed">
+                ✅ ตรวจเสร็จสิ้น (ส่งคิวต่อ)
+            </button>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            
+            <div>
+                <h2 class="text-lg font-bold text-amber-600 mb-2">📋 รายชื่อผู้ป่วยที่รอเรียกคิว (<span id="queue-count">0</span> คน)</h2>
+                <div class="overflow-x-auto border rounded-xl shadow-inner bg-gray-50 h-[400px] overflow-y-auto">
+                    <table class="w-full text-left border-collapse">
+                        <thead class="sticky top-0 bg-gray-200 text-gray-700 text-sm">
+                            <tr>
+                                <th class="p-3">เลขคิว</th>
+                                <th class="p-3">ชื่อ - นามสกุล</th>
+                                <th class="p-3 text-center">ตำแหน่งปัจจุบัน</th>
+                                <th class="p-3 text-center">จัดการคิว</th>
+                            </tr>
+                        </thead>
+                        <tbody id="waiting-list-tbody" class="divide-y divide-gray-200 text-gray-700 text-sm">
+                            </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div>
+                <h2 class="text-lg font-bold text-green-600 mb-2">⏱️ ประวัติผู้ป่วยที่ผ่านจุดนี้แล้วล่าสุด (10 คนล่าสุด)</h2>
+                <div class="overflow-x-auto border rounded-xl shadow-inner bg-gray-50 h-[400px] overflow-y-auto">
+                    <table class="w-full text-left border-collapse">
+                        <thead class="sticky top-0 bg-gray-100 text-gray-600 text-sm">
+                            <tr>
+                                <th class="p-3">เลขคิว</th>
+                                <th class="p-3">ชื่อ - นามสกุล</th>
+                                <th class="p-3 text-center">สถานะ</th>
+                            </tr>
+                        </thead>
+                        <tbody id="history-list-tbody" class="divide-y divide-gray-200 text-gray-500 text-sm">
+                            </tbody>
+                    </table>
+                </div>
+            </div>
+
+        </div>
+
+    </div>
+
+    <script>
+        const serverIP = "10.121.111.233";
+        let currentStation = document.getElementById("station-select").value;
+        let currentCallingQueue = "-";
+
+        const ws = new WebSocket(`ws://${serverIP}:8000/ws/queue`);
+
+        ws.onmessage = function(event) {
+            const data = JSON.parse(event.data);
+            
+            // 1. อัปเดตคิวปัจจุบัน
+            currentCallingQueue = data.current_calls[currentStation];
+            document.getElementById("current-active-q").innerText = currentCallingQueue;
+            
+            if (currentCallingQueue && currentCallingQueue !== "-") {
+                document.getElementById("btn-finish").removeAttribute("disabled");
+            } else {
+                document.getElementById("btn-finish").setAttribute("disabled", "true");
+            }
+
+            // 2. เรนเดอร์ตารางฝั่งซ้าย: คนไข้รอเรียกตรวจ (Pending)
+            const waitingPatients = data.waiting_patients[currentStation] || [];
+            document.getElementById("queue-count").innerText = waitingPatients.length;
+
+            const tbodyWait = document.getElementById("waiting-list-tbody");
+            tbodyWait.innerHTML = "";
+
+            if (waitingPatients.length === 0) {
+                tbodyWait.innerHTML = `<tr><td colspan="4" class="p-4 text-center text-gray-400">ไม่มีผู้ป่วยรอคิวในจุดนี้</td></tr>`;
+            } else {
+                waitingPatients.forEach(p => {
+                    // 🔴 เช็คว่าคิวนี้กำลังถูกตรวจอยู่ที่จุดอื่นพร้อมกันหรือไม่ (busy_at มาจาก server)
+                    // ถ้าใช่ ให้ปิดปุ่มเรียกคิวแถวนี้ไว้ก่อน แล้วข้ามไปเรียกคนถัดไปได้เลย
+                    // เมื่อจุดนั้นตรวจเสร็จ ระบบจะปลดล็อกแถวนี้ให้เรียกได้เองอัตโนมัติในการอัปเดตครั้งถัดไป
+                    const isBusy = !!p.busy_at;
+                    const statusCell = isBusy
+                        ? `<span class="inline-flex items-center gap-1 bg-red-100 text-red-700 text-xs font-bold px-2.5 py-1 rounded-full border border-red-300">🔴 กำลังตรวจที่ ${p.busy_label || p.busy_at}</span>`
+                        : `<span class="inline-flex items-center gap-1 bg-green-100 text-green-700 text-xs font-bold px-2.5 py-1 rounded-full border border-green-300">🟢 พร้อมเรียก</span>`;
+                    const actionCell = isBusy
+                        ? `<button disabled title="คิวนี้กำลังตรวจอยู่ที่ ${p.busy_label || p.busy_at}" class="bg-gray-300 text-gray-500 text-xs font-bold px-3 py-1.5 rounded-lg cursor-not-allowed">⏳ ไม่พร้อม</button>`
+                        : `<button onclick="callQueue('${p.queue_number}')" class="bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold px-3 py-1.5 rounded-lg shadow-sm">🔊 เรียกคิว</button>`;
+
+                    const tr = document.createElement("tr");
+                    tr.className = `hover:bg-white bg-opacity-70 transition ${isBusy ? 'opacity-60' : ''}`;
+                    tr.innerHTML = `
+                        <td class="p-3 font-bold text-blue-600 text-base">${p.queue_number}</td>
+                        <td class="p-3 font-medium">${p.name}</td>
+                        <td class="p-3 text-center">${statusCell}</td>
+                        <td class="p-3 text-center">${actionCell}</td>
+                    `;
+                    tbodyWait.appendChild(tr);
+                });
+            }
+
+            // 3. 🆕 เรนเดอร์ตารางฝั่งขวา: ประวัติการตรวจเสร็จสิ้นแล้ว (Completed)
+            const historyPatients = data.history_patients[currentStation] || [];
+            const tbodyHistory = document.getElementById("history-list-tbody");
+            tbodyHistory.innerHTML = "";
+
+            if (historyPatients.length === 0) {
+                tbodyHistory.innerHTML = `<tr><td colspan="3" class="p-4 text-center text-gray-400">ยังไม่มีประวัติในจุดนี้</td></tr>`;
+            } else {
+                historyPatients.forEach(h => {
+                    const tr = document.createElement("tr");
+                    tr.className = "bg-gray-50 bg-opacity-50";
+                    tr.innerHTML = `
+                        <td class="p-3 font-bold text-gray-600">${h.queue_number}</td>
+                        <td class="p-3 text-gray-600 line-through">${h.name}</td>
+                        <td class="p-3 text-center">
+                            <span class="bg-green-100 text-green-700 text-xs font-bold px-2.5 py-1 rounded-full">✓ ผ่านจุดนี้แล้ว</span>
+                        </td>
+                    `;
+                    tbodyHistory.appendChild(tr);
+                });
+            }
+        };
+
+        function changeStation() {
+            currentStation = document.getElementById("station-select").value;
+            if(ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({action: "refresh"})); 
+            }
+        }
+
+        async function callQueue(qNum) {
+            try {
+                await fetch(`http://${serverIP}:8000/api/call-queue`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ queue_number: qNum, station_name: currentStation })
+                });
+            } catch (error) {
+                alert("เกิดข้อผิดพลาดในการเชื่อมต่อเพื่อเรียกคิว");
+            }
+        }
+
+        async function finishCurrentQueue() {
+            if(!currentCallingQueue || currentCallingQueue === "-") return;
+            try {
+                await fetch(`http://${serverIP}:8000/api/finish-queue`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ queue_number: currentCallingQueue, station_name: currentStation })
+                });
+            } catch (error) {
+                alert("เกิดข้อผิดพลาดในการส่งข้อมูลเสร็จสิ้นคิว");
+            }
+        }
+    </script>
+</body>
+</html>

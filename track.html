@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>เช็คสถานะคิวของคุณ</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+</head>
+<body class="bg-slate-900 text-white min-h-screen p-5 flex flex-col items-center">
+
+    <div class="max-w-md w-full">
+
+        <div class="text-center my-6">
+            <h1 class="text-2xl font-black text-emerald-400">🏥 เช็คสถานะคิวของคุณ</h1>
+            <p class="text-slate-400 text-sm mt-1">โรงพยาบาลกรุงเทพ</p>
+        </div>
+
+        <!-- ช่องค้นหา (กรณีเปิดหน้านี้เองไม่ได้มาจาก QR) -->
+        <div id="search-box" class="bg-slate-800 border border-slate-700 rounded-2xl p-4 mb-4">
+            <label class="block text-xs text-slate-400 mb-2">กรอกหมายเลขคิวของคุณ</label>
+            <div class="flex gap-2">
+                <input id="queue-input" type="text" placeholder="เช่น W004"
+                       class="flex-1 bg-slate-900 border border-slate-700 rounded-xl p-3 text-white text-center font-mono font-bold uppercase focus:outline-none focus:border-emerald-500"
+                       onkeydown="if(event.key==='Enter') loadFromInput()">
+                <button onclick="loadFromInput()" class="bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-5 rounded-xl transition">
+                    <i class="fa-solid fa-magnifying-glass"></i>
+                </button>
+            </div>
+        </div>
+
+        <p id="error-box" class="hidden bg-red-900/50 border border-red-500 text-red-200 p-3 rounded-xl text-center text-sm font-semibold mb-4"></p>
+        <p id="loading-box" class="hidden text-center text-slate-400 text-sm mb-4">
+            <i class="fa-solid fa-spinner animate-spin mr-1"></i> กำลังโหลดข้อมูล...
+        </p>
+
+        <!-- การ์ดผลลัพธ์ -->
+        <div id="result-card" class="hidden">
+
+            <div class="bg-slate-800 border border-slate-700 rounded-2xl p-6 mb-4 text-center shadow-xl">
+                <p class="text-xs text-slate-400 mb-1">หมายเลขคิวของคุณ</p>
+                <div id="r-queue-num" class="text-6xl font-black font-mono text-emerald-400 mb-2"></div>
+                <p id="r-patient-name" class="text-slate-300 font-bold"></p>
+                <p id="r-created-at" class="text-xs text-slate-500 mt-1"></p>
+            </div>
+
+            <!-- ข้อความสถานะหลัก เด่นชัดที่สุด -->
+            <div id="focus-card" class="rounded-2xl p-5 mb-4 text-center border shadow-lg">
+                <p id="focus-message" class="font-bold text-lg leading-relaxed"></p>
+            </div>
+
+            <!-- รายละเอียดแต่ละจุด (Checklist) -->
+            <div class="bg-slate-800 border border-slate-700 rounded-2xl p-4">
+                <p class="text-xs font-bold text-slate-400 uppercase tracking-wide mb-3">ลำดับขั้นตอนการรับบริการ</p>
+                <div id="stations-list" class="space-y-2"></div>
+            </div>
+
+            <p class="text-center text-xs text-slate-600 mt-4">
+                <i class="fa-solid fa-arrows-rotate mr-1"></i> อัปเดตอัตโนมัติทุก 8 วินาที
+            </p>
+        </div>
+
+    </div>
+
+    <script>
+        // 🌐 ใช้ที่อยู่ของหน้านี้เอง (origin) เป็นฐานในการเรียก API เสมอ
+        // ทำให้ใช้ได้ทั้งตอนเปิดผ่าน LAN ภายในโรงพยาบาล และตอนเปิดผ่านลิงก์สาธารณะ (Cloudflare Tunnel ฯลฯ)
+        // โดยไม่ต้องแก้ไอพีในโค้ดเลย
+        const API_BASE = window.location.origin;
+
+        let pollTimer = null;
+
+        function getQueueParam() {
+            const params = new URLSearchParams(window.location.search);
+            return (params.get('q') || '').trim().toUpperCase();
+        }
+
+        function loadFromInput() {
+            const qNum = document.getElementById('queue-input').value.trim().toUpperCase();
+            if (!qNum) return;
+            const url = new URL(window.location.href);
+            url.searchParams.set('q', qNum);
+            window.history.replaceState({}, '', url);
+            fetchStatus(qNum);
+        }
+
+        const STATUS_STYLE = {
+            Lock:      { badge: "bg-gray-600/30 text-gray-400 border-gray-500/50",     icon: "⬜", text: "ยังไม่ได้จองคิว" },
+            Pending:   { badge: "bg-emerald-600/20 text-emerald-300 border-emerald-500/50", icon: "🟢", text: "รอเรียก" },
+            Hold:      { badge: "bg-amber-600/20 text-amber-300 border-amber-500/50",   icon: "⏸️", text: "พักคิวไว้" },
+            Calling:   { badge: "bg-red-600/20 text-red-300 border-red-500/50",         icon: "🔴", text: "กำลังเรียก" },
+            Completed: { badge: "bg-blue-600/20 text-blue-300 border-blue-500/50",      icon: "✅", text: "เสร็จแล้ว" },
+            Skipped:   { badge: "bg-slate-700/30 text-slate-500 border-slate-600/50",   icon: "➖", text: "ข้าม" },
+        };
+
+        async function fetchStatus(qNum) {
+            const errorBox = document.getElementById('error-box');
+            const loadingBox = document.getElementById('loading-box');
+            const resultCard = document.getElementById('result-card');
+
+            errorBox.classList.add('hidden');
+
+            try {
+                const res = await fetch(`${API_BASE}/api/track/${qNum}`);
+                loadingBox.classList.add('hidden');
+
+                if (!res.ok) {
+                    const errData = await res.json().catch(() => ({}));
+                    errorBox.innerText = `⚠️ ${errData.detail || `ไม่พบคิว ${qNum}`}`;
+                    errorBox.classList.remove('hidden');
+                    resultCard.classList.add('hidden');
+                    stopPolling();
+                    return;
+                }
+
+                const data = await res.json();
+                renderResult(data);
+                resultCard.classList.remove('hidden');
+                startPolling(qNum);
+            } catch (err) {
+                loadingBox.classList.add('hidden');
+                console.error(err);
+                errorBox.innerText = "❌ ไม่สามารถเชื่อมต่อกับระบบได้ กรุณาลองใหม่อีกครั้ง";
+                errorBox.classList.remove('hidden');
+            }
+        }
+
+        function renderResult(data) {
+            document.getElementById('r-queue-num').innerText = data.queue_number;
+            document.getElementById('r-patient-name').innerText = data.patient_name;
+            document.getElementById('r-created-at').innerText = `ลงทะเบียนเมื่อ ${data.created_at}`;
+
+            const focusCard = document.getElementById('focus-card');
+            const focusMsg = document.getElementById('focus-message');
+            focusMsg.innerText = data.focus_message;
+
+            focusCard.className = data.is_done
+                ? "rounded-2xl p-5 mb-4 text-center border shadow-lg bg-blue-600/10 border-blue-500/40 text-blue-200"
+                : "rounded-2xl p-5 mb-4 text-center border shadow-lg bg-emerald-600/10 border-emerald-500/40 text-emerald-200 animate-pulse";
+
+            // 📋 Checklist + จำนวนคิวที่รอ (ไม่แสดงเวลา แค่จำนวนคน)
+            const listEl = document.getElementById('stations-list');
+            if (!data.stations_status || data.stations_status.length === 0) {
+                listEl.innerHTML = `<p class="text-slate-500 text-sm text-center py-3">ยังไม่มีรายการตรวจ (รอกำหนดโปรแกรมตรวจ)</p>`;
+            } else {
+                listEl.innerHTML = data.stations_status.map(s => {
+                    const style = STATUS_STYLE[s.status] || STATUS_STYLE.Lock;
+                    const aheadText = (s.status === 'Pending' && typeof s.waiting_ahead === 'number')
+                        ? (s.waiting_ahead === 0 ? ' • คิวถัดไปคือคุณ' : ` • รออีก ${s.waiting_ahead} คิว`)
+                        : '';
+                    return `
+                        <div class="p-2.5 rounded-xl border ${style.badge}">
+                            <div class="flex items-center justify-between">
+                                <span class="font-semibold text-sm">${s.label}</span>
+                                <span class="text-xs font-bold px-2 py-1 rounded-full bg-black/20">${style.icon} ${style.text}${aheadText}</span>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+            }
+        }
+
+        function startPolling(qNum) {
+            stopPolling();
+            pollTimer = setInterval(() => fetchStatus(qNum), 8000);
+        }
+
+        function stopPolling() {
+            if (pollTimer) clearInterval(pollTimer);
+            pollTimer = null;
+        }
+
+        // 🚀 เริ่มทำงาน: ถ้ามี ?q= ในลิงก์ (มาจาก QR Code) ให้โหลดทันที
+        window.addEventListener('DOMContentLoaded', () => {
+            const qParam = getQueueParam();
+            if (qParam) {
+                document.getElementById('queue-input').value = qParam;
+                document.getElementById('loading-box').classList.remove('hidden');
+                fetchStatus(qParam);
+            }
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <script src="auth-check.js"></script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>พิมพ์บัตรคิวซ้ำ (Reprint)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
+
+    <style>
+        #ticket-print-area { display: none; }
+
+        @media print {
+            @page {
+                size: 80mm auto;
+                margin: 0mm !important;
+            }
+            html, body {
+                width: 100% !important;
+                margin: 0 !important;
+                padding: 0 !important;
+                background: #fff !important;
+            }
+            body * { visibility: hidden; }
+            #ticket-print-area, #ticket-print-area * { visibility: visible; }
+
+            #ticket-print-area {
+                display: block !important;
+                position: absolute !important;
+                left: 50% !important;
+                top: 0 !important;
+                transform: translateX(-50%) !important;
+                width: 72mm !important;
+                padding: 2mm 3mm 10mm 3mm !important;
+                font-family: 'Tahoma', 'Sarabun', sans-serif;
+                color: #000;
+                text-align: center !important;
+                box-sizing: border-box !important;
+            }
+
+            .ticket-logo {
+                width: 55px !important;
+                height: auto !important;
+                margin: 0 auto 4px auto !important;
+                display: block !important;
+            }
+            .ticket-title { font-size: 19px; font-weight: bold; margin-bottom: 2px; text-align: center; }
+            .ticket-subtitle { font-size: 13px; font-weight: bold; text-align: center; }
+            .ticket-reprint-tag {
+                font-size: 12px; font-weight: 900; text-align: center;
+                border: 1.5px solid #000; border-radius: 4px; padding: 1px 6px;
+                display: inline-block; margin-top: 3px;
+            }
+            .ticket-divider { border-top: 2px dashed #000; margin: 6px 0; width: 100%; }
+            .ticket-queue-number { font-size: 70px; font-weight: 900; margin: 0 auto; line-height: 1; text-align: center; }
+
+            .ticket-info { font-size: 14px; line-height: 1.6; margin: 3px 0; text-align: center; }
+
+            /* บาร์โค้ด CN/เลขคิว — ต้องบังคับ display ชัดเจนเหมือน QR Code เพราะ SVG บางเบราว์เซอร์ไม่ inherit visibility ให้ลูกอัตโนมัติตอนพิมพ์ */
+            #cn-barcode-wrapper {
+                display: block !important;
+                width: 100% !important;
+                margin: 4px auto !important;
+                text-align: center !important;
+            }
+            #cn-barcode {
+                display: inline-block !important;
+                visibility: visible !important;
+                max-width: 100% !important;
+                height: auto !important;
+            }
+            #cn-barcode * {
+                visibility: visible !important;
+            }
+
+            #qrcode-container {
+                display: block !important;
+                width: 120px !important;
+                margin: 0 auto !important;
+                text-align: center !important;
+            }
+            #qrcode-container img {
+                display: block !important;
+                margin: 0 auto !important;
+            }
+
+            .ticket-footer {
+                font-size: 11px;
+                font-weight: bold;
+                margin-top: 6px;
+                border-top: 2px dashed #000;
+                padding-top: 5px;
+                text-align: center !important;
+            }
+        }
+    </style>
+</head>
+<body class="bg-slate-900 text-white min-h-screen pb-10">
+
+    <nav class="bg-slate-800 border-b border-slate-700 px-4 py-3 flex items-center justify-between text-sm">
+        <div class="flex items-center space-x-3">
+            <span class="text-slate-300 font-bold">📍 หน้าปัจจุบัน: <span class="text-cyan-400">พิมพ์บัตรคิวซ้ำ</span></span>
+        </div>
+    </nav>
+
+    <div class="max-w-xl mx-auto mt-8 p-6 bg-slate-800 rounded-2xl border border-slate-700 shadow-2xl">
+        <h2 class="text-2xl font-bold text-cyan-400 mb-6 text-center"><i class="fa-solid fa-print mr-2"></i>พิมพ์บัตรคิวซ้ำ</h2>
+
+        <!-- ช่องค้นหา -->
+        <div class="mb-4">
+            <label class="block text-sm text-slate-400 mb-1">ค้นหาด้วยเลขคิว หรือ ชื่อคนไข้ (วันนี้เท่านั้น)</label>
+            <div class="flex gap-2">
+                <input id="search-input" type="text" placeholder="เช่น W004 หรือ สมชาย..."
+                       class="flex-1 bg-slate-900 border border-slate-700 rounded-xl p-3 text-white focus:outline-none focus:border-cyan-500"
+                       oninput="onSearchInput()" onkeydown="if(event.key==='Enter') doSearch()">
+                <button onclick="doSearch()" class="bg-cyan-600 hover:bg-cyan-500 text-white font-bold px-5 rounded-xl transition">
+                    <i class="fa-solid fa-magnifying-glass"></i>
+                </button>
+            </div>
+
+            <!-- รายการผลลัพธ์แบบ dropdown -->
+            <div id="search-results" class="hidden mt-2 bg-slate-900 border border-slate-700 rounded-xl overflow-hidden max-h-56 overflow-y-auto"></div>
+        </div>
+
+        <p id="load-error" class="hidden bg-red-900/50 border border-red-500 text-red-200 p-3 rounded-xl text-center text-sm font-semibold mb-4"></p>
+
+        <!-- ตัวอย่างบัตรก่อนพิมพ์ -->
+        <div id="preview-box" class="hidden bg-slate-900 border border-slate-700 rounded-xl p-5 mb-4">
+            <div class="flex justify-between items-start mb-3">
+                <div>
+                    <p class="text-xs text-slate-500">หมายเลขคิว</p>
+                    <p id="pv-queue-num" class="text-4xl font-black text-cyan-400 font-mono"></p>
+                </div>
+                <span id="pv-type-badge" class="text-xs font-bold px-3 py-1 rounded-full"></span>
+            </div>
+            <p class="text-sm text-slate-300 mb-1"><i class="fa-solid fa-user mr-1 text-slate-500"></i> <span id="pv-patient-name" class="font-bold"></span></p>
+            <p class="text-xs text-slate-500"><i class="fa-regular fa-clock mr-1"></i> ลงทะเบียนเมื่อ <span id="pv-created-at"></span></p>
+        </div>
+
+        <button id="print-btn" onclick="printTicket()" disabled
+                class="w-full bg-gray-500 text-white font-bold p-3.5 rounded-xl transition-all shadow-lg flex items-center justify-center gap-2 cursor-not-allowed">
+            <i class="fa-solid fa-print"></i> พิมพ์บัตรคิวซ้ำ
+        </button>
+    </div>
+
+    <!-- โครงสร้างบัตรสำหรับพิมพ์ -->
+    <div id="ticket-print-area">
+        <img src="brh.png" alt="Logo" class="ticket-logo" onerror="this.src='data:image/svg+xml;utf8,<svg xmlns=\'http://www.w3.org/2000/svg\' width=\'40\' height=\'40\' viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'black\' stroke-width=\'2\'><path d=\'M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6\'/></svg>'">
+
+        <div class="ticket-title">โรงพยาบาลกรุงเทพ</div>
+        <div class="ticket-subtitle">บัตรคิวรับบริการ</div>
+        <div class="ticket-reprint-tag">📄 พิมพ์ซ้ำ (Reprint)</div>
+
+        <div class="ticket-divider"></div>
+        <div style="font-size: 13px; font-weight: bold; text-align: center;">หมายเลขคิวของคุณ</div>
+        <div class="ticket-queue-number" id="print-queue-num">-</div>
+        <div class="ticket-divider"></div>
+
+        <div class="ticket-info"><b>ชื่อ:</b> <span id="print-patient-name">-</span></div>
+        <div class="ticket-info"><b>ประเภท:</b> <span id="print-queue-type">-</span></div>
+        <div class="ticket-info"><b>ลงทะเบียนเมื่อ:</b> <span id="print-date">-</span></div>
+        <div class="ticket-info"><b>พิมพ์ซ้ำเมื่อ:</b> <span id="print-reprint-date">-</span></div>
+
+        <!-- 🆔 บาร์โค้ด — ให้เอาใบคิวนี้ไปสแกนที่แต่ละจุดตรวจแทนบัตรแยก (CN ถ้ามี ไม่มีใช้เลขคิวแทน) -->
+        <div id="cn-barcode-wrapper" style="margin: 6px 0; text-align: center;">
+            <svg id="cn-barcode"></svg>
+        </div>
+
+        <div class="ticket-divider"></div>
+        <div style="margin: 6px 0; text-align: center;">
+            <div id="qrcode-container"></div>
+        </div>
+
+        <div class="ticket-footer">
+            สแกน QR Code เพื่อติดตามสถานะคิวบนมือถือ<br>
+            <span style="font-size: 9px; color: #444;">(โปรดเชื่อมต่อ Wi-Fi โรงพยาบาล)</span>
+        </div>
+    </div>
+
+    <script>
+        const SERVER_IP = "10.121.111.233";
+        // 🌐 โดเมนสาธารณะสำหรับ QR Code เท่านั้น (ดูคำอธิบายเดียวกับใน register.html)
+        const PUBLIC_TRACK_BASE = "https://imagination-obtaining-luis-wrap.trycloudflare.com"; // 👈 ใส่ เช่น "https://queue-track.yourclinic.com"
+        let currentQueueData = null;
+        let searchDebounce = null;
+
+        function onSearchInput() {
+            clearTimeout(searchDebounce);
+            const val = document.getElementById("search-input").value.trim();
+            if (!val) {
+                document.getElementById("search-results").classList.add("hidden");
+                return;
+            }
+            searchDebounce = setTimeout(() => fetchSuggestions(val), 300);
+        }
+
+        async function fetchSuggestions(term) {
+            try {
+                const res = await fetch(`http://${SERVER_IP}:8000/api/today-queues?search=${encodeURIComponent(term)}`);
+                const data = await res.json();
+                renderSuggestions(data.data || []);
+            } catch (err) {
+                console.error(err);
+            }
+        }
+
+        function renderSuggestions(list) {
+            const box = document.getElementById("search-results");
+            if (list.length === 0) {
+                box.innerHTML = `<div class="p-3 text-sm text-slate-500 text-center">ไม่พบคิวที่ค้นหา</div>`;
+                box.classList.remove("hidden");
+                return;
+            }
+            box.innerHTML = list.map(item => {
+                const isA = item.queue_number.startsWith("A");
+                const isM = item.queue_number.startsWith("M");
+                const color = isA ? "text-blue-400" : isM ? "text-teal-400" : "text-amber-400";
+                return `
+                    <div class="flex items-center justify-between gap-2 p-3 border-b border-slate-800 last:border-0 hover:bg-slate-800 cursor-pointer"
+                         onclick="selectQueue('${item.queue_number}')">
+                        <span class="font-mono font-bold ${color}">${item.queue_number}</span>
+                        <span class="text-sm text-slate-300 flex-1 text-left ml-2 truncate">${item.patient_name}</span>
+                    </div>
+                `;
+            }).join('');
+            box.classList.remove("hidden");
+        }
+
+        function selectQueue(qNum) {
+            document.getElementById("search-input").value = qNum;
+            document.getElementById("search-results").classList.add("hidden");
+            doSearch();
+        }
+
+        async function doSearch() {
+            const qNum = document.getElementById("search-input").value.trim().toUpperCase();
+            const errorBox = document.getElementById("load-error");
+            const previewBox = document.getElementById("preview-box");
+
+            document.getElementById("search-results").classList.add("hidden");
+            errorBox.classList.add("hidden");
+            previewBox.classList.add("hidden");
+            setPrintButtonState(false);
+
+            if (!qNum) return;
+
+            try {
+                const res = await fetch(`http://${SERVER_IP}:8000/api/queue-status/${qNum}`);
+                if (!res.ok) {
+                    errorBox.innerText = `⚠️ ไม่พบคิว ${qNum} ในวันนี้`;
+                    errorBox.classList.remove("hidden");
+                    return;
+                }
+                currentQueueData = await res.json();
+                renderPreview(currentQueueData);
+                previewBox.classList.remove("hidden");
+                setPrintButtonState(true);
+            } catch (err) {
+                console.error(err);
+                errorBox.innerText = "❌ ไม่สามารถเชื่อมต่อกับ Server ได้";
+                errorBox.classList.remove("hidden");
+            }
+        }
+
+        function setPrintButtonState(enabled) {
+            const btn = document.getElementById("print-btn");
+            btn.disabled = !enabled;
+            btn.className = enabled
+                ? "w-full bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white font-bold p-3.5 rounded-xl transition-all shadow-lg flex items-center justify-center gap-2 cursor-pointer"
+                : "w-full bg-gray-500 text-white font-bold p-3.5 rounded-xl transition-all shadow-lg flex items-center justify-center gap-2 cursor-not-allowed";
+        }
+
+        function renderPreview(data) {
+            const isA = data.queue_type === "appointment";
+            const isM = data.queue_type === "mobile";
+            document.getElementById("pv-queue-num").innerText = data.queue_number;
+            document.getElementById("pv-patient-name").innerText = data.patient_name;
+            document.getElementById("pv-created-at").innerText = data.created_at || "-";
+
+            const typeBadge = document.getElementById("pv-type-badge");
+            typeBadge.innerText = isA ? "นัดหมาย (A)" : isM ? "เก็บตกในโรงพยาบาล (M)" : "Walk-in (W)";
+            typeBadge.className = isA
+                ? "text-xs font-bold px-3 py-1 rounded-full bg-blue-500/20 text-blue-300 border border-blue-400/40"
+                : isM
+                ? "text-xs font-bold px-3 py-1 rounded-full bg-teal-500/20 text-teal-300 border border-teal-400/40"
+                : "text-xs font-bold px-3 py-1 rounded-full bg-amber-500/20 text-amber-300 border border-amber-400/40";
+        }
+
+        function printTicket() {
+            if (!currentQueueData) return;
+            const data = currentQueueData;
+            const isA = data.queue_type === "appointment";
+            const isM = data.queue_type === "mobile";
+            const typeText = isA ? "มีนัดหมาย (คิวนัด)" : isM ? "จองผ่านมือถือ" : "Walk-in (คิวทั่วไป)";
+
+            document.getElementById("print-queue-num").innerText = data.queue_number;
+            document.getElementById("print-patient-name").innerText = data.patient_name;
+            document.getElementById("print-queue-type").innerText = typeText;
+            document.getElementById("print-date").innerText = data.created_at || "-";
+            document.getElementById("print-reprint-date").innerText = new Date().toLocaleString('th-TH');
+
+            const trackBase = PUBLIC_TRACK_BASE || `http://${SERVER_IP}:8000`;
+            const trackingURL = `${trackBase}/track.html?q=${data.queue_number}`;
+            const qrContainer = document.getElementById("qrcode-container");
+            qrContainer.innerHTML = "";
+            new QRCode(qrContainer, {
+                text: trackingURL,
+                width: 120,
+                height: 120,
+                correctLevel: QRCode.CorrectLevel.H
+            });
+
+            // 🆔 บาร์โค้ด — ใช้ CN ถ้ามี ไม่มีก็ใช้เลขคิวแทน (สแกนรับคิวรองรับทั้ง 2 แบบ)
+            const barcodeValue = data.cn || data.queue_number;
+            try {
+                JsBarcode("#cn-barcode", barcodeValue, {
+                    format: "CODE128",
+                    width: 1.6,
+                    height: 40,
+                    fontSize: 12,
+                    margin: 4,
+                    displayValue: true
+                });
+            } catch (e) {
+                console.error("สร้างบาร์โค้ดไม่สำเร็จ:", e);
+            }
+
+            setTimeout(() => { window.print(); }, 200);
+        }
+
+        // ปิด dropdown เมื่อคลิกนอกกล่องค้นหา
+        document.addEventListener("click", (e) => {
+            const wrapper = document.getElementById("search-results");
+            const input = document.getElementById("search-input");
+            if (!wrapper.contains(e.target) && e.target !== input) {
+                wrapper.classList.add("hidden");
+            }
+        });
+    </script>
+</body>
+</html>

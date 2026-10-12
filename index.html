@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <script src="auth-check.js"></script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ระบบคิวโรงพยาบาล - หน้ารวมเมนูหลัก</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+</head>
+<body class="bg-slate-900 text-white min-h-screen p-6 flex flex-col justify-between">
+
+    <div class="max-w-6xl mx-auto w-full">
+        <!-- Header -->
+        <div class="text-center my-8">
+            <h1 class="text-4xl font-extrabold text-blue-400 mb-2">🏥 Hospital Queue Navigation Hub</h1>
+            <p class="text-slate-400">ศูนย์รวมเมนูจัดการระบบคิวผู้ป่วยและสถานีตรวจทั้งหมด</p>
+        </div>
+
+        <!-- 📍 รับคิว (ยื่นบัตรคิว/สแกน) — ใช้บ่อยที่สุด วางไว้เด่นสุดด้านบน -->
+        <div class="bg-gradient-to-br from-blue-950/60 to-slate-800 border border-blue-500/40 rounded-2xl p-5 mb-8">
+            <h3 class="text-blue-300 font-bold mb-3 flex items-center gap-2">
+                📍 รับคิว (สแกน QR หรือบาร์โค้ด CN บนใบคิว)
+            </h3>
+            <div class="grid grid-cols-6 gap-2 mb-3">
+                <a href="checkin.html?station=Blood" class="bg-slate-800 hover:bg-blue-600 border border-slate-700 hover:border-blue-400 rounded-xl p-3 text-center transition-all">
+                    <div class="text-2xl mb-1">🩸</div>
+                    <div class="text-xs font-bold">เจาะเลือด</div>
+                </a>
+                <a href="checkin.html?station=Eye" class="bg-slate-800 hover:bg-blue-600 border border-slate-700 hover:border-blue-400 rounded-xl p-3 text-center transition-all">
+                    <div class="text-2xl mb-1">👁️</div>
+                    <div class="text-xs font-bold">ตรวจตา</div>
+                </a>
+                <a href="checkin.html?station=Ear" class="bg-slate-800 hover:bg-blue-600 border border-slate-700 hover:border-blue-400 rounded-xl p-3 text-center transition-all">
+                    <div class="text-2xl mb-1">👂</div>
+                    <div class="text-xs font-bold">ตรวจหู</div>
+                </a>
+                <a href="checkin.html?station=Lung" class="bg-slate-800 hover:bg-blue-600 border border-slate-700 hover:border-blue-400 rounded-xl p-3 text-center transition-all">
+                    <div class="text-2xl mb-1">🫁</div>
+                    <div class="text-xs font-bold">ตรวจปอด</div>
+                </a>
+                <a href="checkin.html?station=EKG" class="bg-slate-800 hover:bg-blue-600 border border-slate-700 hover:border-blue-400 rounded-xl p-3 text-center transition-all">
+                    <div class="text-2xl mb-1">🫀</div>
+                    <div class="text-xs font-bold">EKG</div>
+                </a>
+                <a href="checkin.html?station=OBGYN" class="bg-slate-800 hover:bg-pink-600 border border-slate-700 hover:border-pink-400 rounded-xl p-3 text-center transition-all">
+                    <div class="text-2xl mb-1">🤰</div>
+                    <div class="text-xs font-bold">สูติ-นรีเวช</div>
+                </a>
+            </div>
+
+            <!-- 🦴 แผนก X-Ray — กลุ่มเดียวกัน แสดงรวม แต่ยังเป็นคิวแยกกันข้างใน 3 ปุ่มใหญ่ -->
+            <div class="bg-slate-900/60 border border-rose-500/30 rounded-xl p-3 mb-3">
+                <p class="text-xs text-rose-300 font-bold mb-2">🦴 แผนก X-Ray</p>
+                <div class="grid grid-cols-3 gap-3">
+                    <a href="checkin.html?station=XRay" class="bg-slate-800 hover:bg-rose-600 border border-slate-700 hover:border-rose-400 rounded-xl p-5 text-center transition-all">
+                        <div class="text-4xl mb-2">🦴</div>
+                        <div class="text-sm font-bold">X-Ray</div>
+                    </a>
+                    <a href="checkin.html?station=Ultrasound" class="bg-slate-800 hover:bg-sky-600 border border-slate-700 hover:border-sky-400 rounded-xl p-5 text-center transition-all">
+                        <div class="text-4xl mb-2">🩺</div>
+                        <div class="text-sm font-bold">Ultrasound</div>
+                    </a>
+                    <a href="checkin.html?station=Mammogram" class="bg-slate-800 hover:bg-fuchsia-600 border border-slate-700 hover:border-fuchsia-400 rounded-xl p-5 text-center transition-all">
+                        <div class="text-4xl mb-2">🎗️</div>
+                        <div class="text-sm font-bold">Mammogram</div>
+                    </a>
+                </div>
+            </div>
+
+            <a href="checkin.html?station=Doctor" class="bg-slate-800 hover:bg-pink-600 border border-slate-700 hover:border-pink-400 rounded-xl p-4 text-center transition-all flex items-center justify-center gap-2">
+                <span class="text-2xl">👨‍⚕️</span>
+                <span class="text-sm font-bold">รับคิวห้องตรวจแพทย์ (คิวกลาง)</span>
+            </a>
+        </div>
+
+        <!-- Grid Cards -->
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+
+            <!-- Card 1: TV Display Board -->
+            <a href="tv_dashboard.html" class="bg-slate-800 hover:bg-slate-700 border border-slate-700 hover:border-blue-500 p-6 rounded-2xl shadow-lg transition-all duration-300 group flex items-center space-x-4">
+                <div class="bg-blue-600/20 text-blue-400 p-4 rounded-xl group-hover:scale-110 transition-transform">
+                    <i class="fa-solid fa-tv text-3xl"></i>
+                </div>
+                <div>
+                    <h2 class="text-xl font-bold text-white group-hover:text-blue-400">TV Dashboard</h2>
+                    <p class="text-xs text-slate-400 mt-1">หน้าบอร์ดจอใหญ่สำหรับแสดงคิวรวม</p>
+                </div>
+            </a>
+
+            <!-- Card 2: Register Queue -->
+            <a href="register.html" class="bg-slate-800 hover:bg-slate-700 border border-slate-700 hover:border-emerald-500 p-6 rounded-2xl shadow-lg transition-all duration-300 group flex items-center space-x-4">
+                <div class="bg-emerald-600/20 text-emerald-400 p-4 rounded-xl group-hover:scale-110 transition-transform">
+                    <i class="fa-solid fa-address-card text-3xl"></i>
+                </div>
+                <div>
+                    <h2 class="text-xl font-bold text-white group-hover:text-emerald-400">ลงทะเบียนคิว</h2>
+                    <p class="text-xs text-slate-400 mt-1">ออกบัตรคิวใหม่สำหรับผู้ป่วยเข้ามาตรวจ</p>
+                </div>
+            </a>
+
+            <!-- Card 4: Blood Station -->
+            <a href="nurse_blood.html" class="bg-slate-800 hover:bg-slate-700 border border-slate-700 hover:border-rose-500 p-6 rounded-2xl shadow-lg transition-all duration-300 group flex items-center space-x-4">
+                <div class="bg-rose-600/20 text-rose-400 p-4 rounded-xl group-hover:scale-110 transition-transform">
+                    <i class="fa-solid fa-droplet text-3xl"></i>
+                </div>
+                <div>
+                    <h2 class="text-xl font-bold text-white group-hover:text-rose-400">ห้องเจาะเลือด (Blood)</h2>
+                    <p class="text-xs text-slate-400 mt-1">ห้องเจาะเลือดและเก็บสิ่งส่งตรวจ</p>
+                </div>
+            </a>
+
+            <!-- Card 5: Eye Station -->
+            <a href="nurse_eye.html" class="bg-slate-800 hover:bg-slate-700 border border-slate-700 hover:border-purple-500 p-6 rounded-2xl shadow-lg transition-all duration-300 group flex items-center space-x-4">
+                <div class="bg-purple-600/20 text-purple-400 p-4 rounded-xl group-hover:scale-110 transition-transform">
+                    <i class="fa-solid fa-eye text-3xl"></i>
+                </div>
+                <div>
+                    <h2 class="text-xl font-bold text-white group-hover:text-purple-400">ห้องตรวจตา (Eye)</h2>
+                    <p class="text-xs text-slate-400 mt-1">ตรวจวัดสายตาและการมองเห็น</p>
+                </div>
+            </a>
+
+            <!-- Card 6: Ear Station -->
+            <a href="nurse_ear.html" class="bg-slate-800 hover:bg-slate-700 border border-slate-700 hover:border-amber-500 p-6 rounded-2xl shadow-lg transition-all duration-300 group flex items-center space-x-4">
+                <div class="bg-amber-600/20 text-amber-400 p-4 rounded-xl group-hover:scale-110 transition-transform">
+                    <i class="fa-solid fa-ear-listen text-3xl"></i>
+                </div>
+                <div>
+                    <h2 class="text-xl font-bold text-white group-hover:text-amber-400">ห้องตรวจหู (Ear)</h2>
+                    <p class="text-xs text-slate-400 mt-1">ตรวจการได้ยินและการรับฟัง</p>
+                </div>
+            </a>
+
+            <!-- Card 7: Lung Station -->
+            <a href="nurse_lung.html" class="bg-slate-800 hover:bg-slate-700 border border-slate-700 hover:border-teal-500 p-6 rounded-2xl shadow-lg transition-all duration-300 group flex items-center space-x-4">
+                <div class="bg-teal-600/20 text-teal-400 p-4 rounded-xl group-hover:scale-110 transition-transform">
+                    <i class="fa-solid fa-lungs text-3xl"></i>
+                </div>
+                <div>
+                    <h2 class="text-xl font-bold text-white group-hover:text-teal-400">ห้องตรวจปอด (Lung)</h2>
+                    <p class="text-xs text-slate-400 mt-1">ตรวจสมรรถภาพปอด / เอ็กซเรย์</p>
+                </div>
+            </a>
+
+            <!-- Card 8: X-Ray Department (tabbed: X-Ray / Ultrasound / Mammogram) -->
+            <a href="nurse_xray.html" class="bg-slate-800 hover:bg-slate-700 border border-slate-700 hover:border-fuchsia-500 p-6 rounded-2xl shadow-lg transition-all duration-300 group flex items-center space-x-4">
+                <div class="bg-fuchsia-600/20 text-fuchsia-400 p-4 rounded-xl group-hover:scale-110 transition-transform">
+                    <i class="fa-solid fa-x-ray text-3xl"></i>
+                </div>
+                <div>
+                    <h2 class="text-xl font-bold text-white group-hover:text-fuchsia-400">แผนก X-Ray (X-Ray / Ultrasound / Mammogram)</h2>
+                    <p class="text-xs text-slate-400 mt-1">หน้าเดียว สลับแท็บได้ครบทั้ง 3 ห้อง</p>
+                </div>
+            </a>
+
+            <!-- Card 9: EKG Station -->
+            <a href="nurse_ekg.html" class="bg-slate-800 hover:bg-slate-700 border border-slate-700 hover:border-indigo-500 p-6 rounded-2xl shadow-lg transition-all duration-300 group flex items-center space-x-4">
+                <div class="bg-indigo-600/20 text-indigo-400 p-4 rounded-xl group-hover:scale-110 transition-transform">
+                    <i class="fa-solid fa-wave-square text-3xl"></i>
+                </div>
+                <div>
+                    <h2 class="text-xl font-bold text-white group-hover:text-indigo-400">ห้องคลื่นไฟฟ้าหัวใจ (EKG)</h2>
+                    <p class="text-xs text-slate-400 mt-1">ตรวจคลื่นไฟฟ้าหัวใจ EKG</p>
+                </div>
+            </a>
+
+            <!-- Card 9: Doctor Station -->
+            <a href="nurse_doctor.html" class="bg-slate-800 hover:bg-slate-700 border border-slate-700 hover:border-sky-500 p-6 rounded-2xl shadow-lg transition-all duration-300 group flex items-center space-x-4">
+                <div class="bg-sky-600/20 text-sky-400 p-4 rounded-xl group-hover:scale-110 transition-transform">
+                    <i class="fa-solid fa-user-doctor text-3xl"></i>
+                </div>
+                <div>
+                    <h2 class="text-xl font-bold text-white group-hover:text-sky-400">ห้องตรวจแพทย์ (Doctor)</h2>
+                    <p class="text-xs text-slate-400 mt-1">พบแพทย์เพื่อสรุปผลการตรวจ</p>
+                </div>
+            </a>
+
+            <!-- Card: OBGYN Station -->
+            <a href="nurse_obgyn.html" class="bg-slate-800 hover:bg-slate-700 border border-slate-700 hover:border-pink-500 p-6 rounded-2xl shadow-lg transition-all duration-300 group flex items-center space-x-4">
+                <div class="bg-pink-600/20 text-pink-400 p-4 rounded-xl group-hover:scale-110 transition-transform">
+                    <i class="fa-solid fa-baby text-3xl"></i>
+                </div>
+                <div>
+                    <h2 class="text-xl font-bold text-white group-hover:text-pink-400">ห้องตรวจสูติ-นรีเวช (OB-GYN)</h2>
+                    <p class="text-xs text-slate-400 mt-1">ตรวจภายใน / PAP-SMEAR</p>
+                </div>
+            </a>
+
+            <!-- Card: Manage / Edit Program -->
+            <a href="nurse_manage.html" class="bg-slate-800 hover:bg-slate-700 border border-slate-700 hover:border-violet-500 p-6 rounded-2xl shadow-lg transition-all duration-300 group flex items-center space-x-4">
+                <div class="bg-violet-600/20 text-violet-400 p-4 rounded-xl group-hover:scale-110 transition-transform">
+                    <i class="fa-solid fa-sliders text-3xl"></i>
+                </div>
+                <div>
+                    <h2 class="text-xl font-bold text-white group-hover:text-violet-400">จัดการคิว / แก้ไขโปรแกรมตรวจ</h2>
+                    <p class="text-xs text-slate-400 mt-1">ปรับจุดตรวจของคนไข้รายบุคคลภายหลัง</p>
+                </div>
+            </a>
+
+            <!-- Card: Reprint Ticket -->
+            <a href="reprint.html" class="bg-slate-800 hover:bg-slate-700 border border-slate-700 hover:border-cyan-500 p-6 rounded-2xl shadow-lg transition-all duration-300 group flex items-center space-x-4">
+                <div class="bg-cyan-600/20 text-cyan-400 p-4 rounded-xl group-hover:scale-110 transition-transform">
+                    <i class="fa-solid fa-print text-3xl"></i>
+                </div>
+                <div>
+                    <h2 class="text-xl font-bold text-white group-hover:text-cyan-400">พิมพ์บัตรคิวซ้ำ</h2>
+                    <p class="text-xs text-slate-400 mt-1">กรณีบัตรหาย / เครื่องพิมพ์ติดขัด</p>
+                </div>
+            </a>
+
+            <!-- Card: Stats Dashboard -->
+            <a href="dashboard_stats.html" class="bg-slate-800 hover:bg-slate-700 border border-slate-700 hover:border-blue-500 p-6 rounded-2xl shadow-lg transition-all duration-300 group flex items-center space-x-4">
+                <div class="bg-blue-600/20 text-blue-400 p-4 rounded-xl group-hover:scale-110 transition-transform">
+                    <i class="fa-solid fa-chart-column text-3xl"></i>
+                </div>
+                <div>
+                    <h2 class="text-xl font-bold text-white group-hover:text-blue-400">สรุปยอดผู้ใช้บริการ</h2>
+                    <p class="text-xs text-slate-400 mt-1">ยอดรวม/รายจุด แยกรายวัน</p>
+                </div>
+            </a>
+
+            <!-- Card: X-Ray Appointments -->
+            <a href="xray_appointments.html" class="bg-slate-800 hover:bg-slate-700 border border-slate-700 hover:border-sky-500 p-6 rounded-2xl shadow-lg transition-all duration-300 group flex items-center space-x-4">
+                <div class="bg-sky-600/20 text-sky-400 p-4 rounded-xl group-hover:scale-110 transition-transform">
+                    <i class="fa-solid fa-calendar-check text-3xl"></i>
+                </div>
+                <div>
+                    <h2 class="text-xl font-bold text-white group-hover:text-sky-400">นัด X-Ray / Ultrasound / Mammogram</h2>
+                    <p class="text-xs text-slate-400 mt-1">นำเข้ารายชื่อนัดล่วงหน้า + ยืนยันมาถึง</p>
+                </div>
+            </a>
+
+            <!-- Card: Settings -->
+            <a href="settings.html" class="bg-slate-800 hover:bg-slate-700 border border-slate-700 hover:border-violet-500 p-6 rounded-2xl shadow-lg transition-all duration-300 group flex items-center space-x-4">
+                <div class="bg-violet-600/20 text-violet-400 p-4 rounded-xl group-hover:scale-110 transition-transform">
+                    <i class="fa-solid fa-gear text-3xl"></i>
+                </div>
+                <div>
+                    <h2 class="text-xl font-bold text-white group-hover:text-violet-400">ตั้งค่าระบบ</h2>
+                    <p class="text-xs text-slate-400 mt-1">เวลาเฉลี่ย, เกณฑ์แจ้งเตือน, ปิดห้อง-เครื่อง (Admin)</p>
+                </div>
+            </a>
+
+            <!-- Card: Audit Log -->
+            <a href="audit_log.html" class="bg-slate-800 hover:bg-slate-700 border border-slate-700 hover:border-amber-500 p-6 rounded-2xl shadow-lg transition-all duration-300 group flex items-center space-x-4">
+                <div class="bg-amber-600/20 text-amber-400 p-4 rounded-xl group-hover:scale-110 transition-transform">
+                    <i class="fa-solid fa-clock-rotate-left text-3xl"></i>
+                </div>
+                <div>
+                    <h2 class="text-xl font-bold text-white group-hover:text-amber-400">ประวัติการใช้งาน (Audit Log)</h2>
+                    <p class="text-xs text-slate-400 mt-1">ดูว่าใครทำอะไรไปบ้าง (Admin)</p>
+                </div>
+            </a>
+
+            <!-- Card: Change Password -->
+            <a href="change_password.html" class="bg-slate-800 hover:bg-slate-700 border border-slate-700 hover:border-emerald-500 p-6 rounded-2xl shadow-lg transition-all duration-300 group flex items-center space-x-4">
+                <div class="bg-emerald-600/20 text-emerald-400 p-4 rounded-xl group-hover:scale-110 transition-transform">
+                    <i class="fa-solid fa-key text-3xl"></i>
+                </div>
+                <div>
+                    <h2 class="text-xl font-bold text-white group-hover:text-emerald-400">เปลี่ยนรหัสผ่าน</h2>
+                    <p class="text-xs text-slate-400 mt-1">เปลี่ยนรหัสผ่านบัญชีของตัวเอง</p>
+                </div>
+            </a>
+
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <div class="text-center text-xs text-slate-500 mt-8 pb-4">
+        Smart Hospital Queue Management System &copy; 2026<br>
+        Developed by Anurak Butsri
+    </div>
+
+</body>
+</html>

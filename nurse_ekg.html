@@ -1,0 +1,571 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <script src="auth-check.js"></script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>6. จุดตรวจ EKG</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .room-btn {
+            background-color: #ffffff;
+            border-color: #cbd5e1;
+            color: #475569;
+        }
+        .room-btn:hover {
+            background-color: #f0f9ff;
+            border-color: #7dd3fc;
+        }
+        .room-btn.active {
+            background-color: #0284c7;
+            border-color: #0284c7;
+            color: #ffffff;
+            box-shadow: 0 2px 8px rgba(2, 132, 199, 0.4);
+        }
+        .room-btn.room-closed {
+            background-color: #1f2937;
+            border-color: #dc2626;
+            color: #fca5a5;
+            cursor: not-allowed;
+            opacity: 0.7;
+        }
+        .room-btn.room-closed:hover {
+            background-color: #1f2937;
+            border-color: #dc2626;
+        }
+    </style>
+</head>
+<body class="bg-slate-100 p-6 font-sans">
+    <div class="max-w-6xl mx-auto bg-white p-6 rounded-2xl shadow-lg border border-gray-200">
+        
+        <!-- 📍 รับคิว (สแกน QR หรือบาร์โค้ด CN บนใบคิว) — รวมมาจากหน้า checkin.html เดิม ไม่ต้องสลับหน้าอีกต่อไป -->
+        <div class="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-6">
+            <p class="text-sm font-bold text-blue-700 mb-2 flex items-center gap-1.5">📍 รับคิว — สแกน QR หรือบาร์โค้ด CN บนใบคิว</p>
+            <div class="flex gap-2">
+                <input type="text" id="checkin-scan-input" autofocus
+                       class="flex-1 bg-white border-2 border-blue-300 rounded-lg px-3 py-2.5 text-center font-mono font-bold focus:outline-none focus:border-blue-500"
+                       placeholder="สแกนตรงนี้ (หรือพิมพ์เลขคิว)"
+                       onkeydown="if(event.key==='Enter') submitCheckin()">
+                <button onclick="submitCheckin()" class="bg-blue-600 hover:bg-blue-700 text-white font-bold px-5 rounded-lg transition">
+                    จองคิว
+                </button>
+            </div>
+            <p id="checkin-result-msg" class="text-sm mt-2 font-bold"></p>
+        </div>
+
+        <!-- Header Section -->
+        <div class="flex justify-between items-center border-b pb-4 mb-6">
+            <h1 class="text-2xl font-black text-slate-800 flex items-center gap-2">💓 6. จุดตรวจ EKG</h1>
+            <div class="flex items-center gap-3">
+                <!-- Badges แสดงสัญลักษณ์ คิว A / W -->
+                <span class="bg-blue-100 text-blue-700 font-bold px-3 py-1 rounded-lg text-xs border border-blue-300">A = นัดหมาย</span>
+                <span class="bg-amber-100 text-amber-700 font-bold px-3 py-1 rounded-lg text-xs border border-amber-300">W = Walk-in</span>
+                <span class="bg-teal-100 text-teal-700 font-bold px-3 py-1 rounded-lg text-xs border border-teal-300">M = หน่วยเคลื่อนที่</span>
+                <span id="room-badge" class="bg-indigo-100 text-indigo-800 font-bold px-4 py-1 rounded-full text-sm ml-2">ช่อง 1</span>
+            </div>
+        </div>
+
+        <div class="flex items-center gap-2 mb-4">
+                <span class="text-sm font-bold text-slate-500 mr-1 shrink-0">เลือกช่อง:</span>
+                <div id="room-btn-container" class="flex flex-wrap gap-2"></div>
+            </div>
+
+        <!-- กล่องคิวปัจจุบัน -->
+        <div class="bg-indigo-50 border border-indigo-200 p-5 rounded-xl mb-6 flex justify-between items-center shadow-sm">
+            <div>
+                <p class="text-sm text-indigo-600 font-bold">คิวปัจจุบันที่กำลังเรียกตรวจ:</p>
+                <div class="flex items-center gap-3 mt-1">
+                    <h2 id="current-call-box" class="text-5xl font-black text-gray-400 font-mono">-</h2>
+                    <!-- Badge บอกประเภทคิวปัจจุบัน -->
+                    <span id="current-badge" class="hidden text-xs font-bold px-3 py-1 rounded-full shadow-sm"></span>
+                </div>
+            </div>
+
+            <!-- 🌟 ปุ่มควบคุม: เพิ่มปุ่มพักคิว (Hold) ข้างปุ่มตรวจเสร็จ -->
+            <div class="flex gap-2">
+                <button id="btn-recall" onclick="recallQueueCurrent()" disabled class="bg-gray-300 text-white font-bold py-3 px-4 rounded-xl text-md transition shadow-md flex items-center gap-1">
+                    🔁 เรียกซ้ำ
+                </button>
+                <button id="btn-hold" onclick="holdQueueCurrent()" disabled class="bg-gray-300 text-white font-bold py-3 px-4 rounded-xl text-md transition shadow-md flex items-center gap-1">
+                    ⏸️ พักคิว
+                </button>
+                <button id="btn-finish" onclick="finishQueue()" disabled class="bg-gray-400 text-white font-bold py-3 px-6 rounded-xl text-lg transition shadow-md">
+                    ✅ ตรวจเสร็จสิ้น (ส่งคิวต่อ)
+                </button>
+            </div>
+        </div>
+
+        <!-- Tables Section -->
+        <div class="grid grid-cols-2 gap-6">
+            <!-- ตารางคิวรอเรียก -->
+            <div>
+                <div class="flex justify-between items-center mb-3">
+                    <h3 class="text-lg font-bold text-gray-700 flex items-center gap-2">📋 รายชื่อผู้ป่วยที่รอเรียกคิว (<span id="waiting-count">0</span> คน)</h3>
+                    <!-- สรุปจำนวนแยกประเภท -->
+                    <div class="flex gap-1.5 text-xs font-bold">
+                        <span class="bg-blue-100 text-blue-700 px-2 py-0.5 rounded-md">A: <span id="count-a">0</span></span>
+                        <span class="bg-amber-100 text-amber-700 px-2 py-0.5 rounded-md">W: <span id="count-w">0</span></span>
+                        <span class="bg-teal-100 text-teal-700 px-2 py-0.5 rounded-md">M: <span id="count-m">0</span></span>
+                    </div>
+                </div>
+
+                <div class="border border-gray-200 rounded-xl overflow-hidden shadow-sm">
+                    <table class="w-full text-left border-collapse">
+                        <thead class="bg-gray-50 text-gray-600 text-sm font-bold border-b border-gray-200">
+                            <tr>
+                                <th class="p-3">เลขคิว</th>
+                                <th class="p-3">ประเภท</th>
+                                <th class="p-3">ชื่อ - นามสกุล</th>
+                                <th class="p-3 text-center">ตำแหน่งปัจจุบัน</th>
+                                <th class="p-3 text-center">จัดการคิว</th>
+                                <th class="p-3 text-center border-l-2 border-slate-200">ยกเลิก</th>
+                            </tr>
+                        </thead>
+                        <tbody id="waiting-list" class="divide-y divide-gray-100 bg-white text-sm"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- ตารางประวัติการตรวจสำเร็จ -->
+            <div>
+                <h3 class="text-lg font-bold text-green-700 mb-3 flex items-center gap-2">⏱️ ประวัติตรวจเสร็จล่าสุด (10 คนล่าสุด)</h3>
+                <div class="border border-gray-200 rounded-xl overflow-hidden shadow-sm">
+                    <table class="w-full text-left border-collapse">
+                        <thead class="bg-green-50 text-green-700 text-sm font-bold border-b border-green-200">
+                            <tr>
+                                <th class="p-3">เลขคิว</th>
+                                <th class="p-3">ชื่อ - นามสกุล</th>
+                                <th class="p-3">เวลาสำเร็จ</th>
+                            </tr>
+                        </thead>
+                        <tbody id="history-list" class="divide-y divide-gray-100 bg-white text-sm"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Config Server 
+        const serverIP = "10.121.111.233"; // 👈 IP Server จริงของคุณ
+        const EXAM_TYPE = "EKG";         // 👈 ชื่อ canonical ของจุดนี้ — ใช้กับคิวกลาง (waiting list/history/รับคิว) ที่ทุกช่องแชร์ร่วมกัน
+        let stationName = "EKG_1";      // ช่องที่เลือกอยู่ตอนนี้ — ใช้ตอนกดเรียกคิว/พักคิว/ตรวจเสร็จเท่านั้น
+        let activeQueueNumber = "-";       // เก็บคิวปัจจุบันที่กำลังเรียกตรวจอยู่
+
+        // 🌐 เชื่อมต่อระบบ WebSocket อัปเดตตารางและปุ่มแบบอัตโนมัติ Real-time
+        let latestWSData = null;
+        const ws = new WebSocket(`ws://${serverIP}:8000/ws/queue`);
+        ws.onmessage = function(event) {
+            latestWSData = JSON.parse(event.data);
+            renderUI();
+        };
+
+                function renderUI() {
+            if (!latestWSData) return;
+            const data = latestWSData;
+
+            // 🔢 สร้างปุ่มเลือกช่องแบบไดนามิกตามจำนวนห้องจริงที่ตั้งไว้ (Settings) — ไม่ใช่ปุ่มตายตัวอีกต่อไป
+            const roomList = (data.multi_room_stations && data.multi_room_stations["EKG"]) || ["EKG_1"];
+            const closedRooms = new Set(data.closed_rooms || []);
+            const roomsSignature = roomList.join(',') + '|' + [...closedRooms].sort().join(',');
+
+            if (window._lastRoomsSignature !== roomsSignature) {
+                window._lastRoomsSignature = roomsSignature;
+                const container = document.getElementById("room-btn-container");
+                container.innerHTML = roomList.map(roomName => {
+                    const roomNum = roomName.split('_').pop();
+                    const isClosed = closedRooms.has(roomName);
+                    const classes = ["room-btn", "min-w-[64px]", "py-2.5", "rounded-xl", "font-bold", "text-sm", "border-2", "transition-all", isClosed ? "room-closed" : ""].filter(Boolean).join(' ');
+                    return `<button type="button" data-room="${roomName}" onclick="changeRoom('${roomName}')" class="${classes}">${isClosed ? '🔒' : roomNum}</button>`;
+                }).join('');
+            }
+
+            // อัปเดตว่าห้องไหน "กำลังเลือกอยู่" เสมอ (แยกจากการสร้างปุ่มใหม่ด้านบน เพราะเปลี่ยนบ่อยกว่าและไม่ต้องสร้าง DOM ใหม่)
+            document.querySelectorAll(".room-btn").forEach(btn => {
+                btn.classList.toggle("active", btn.dataset.room === stationName);
+            });
+
+            // 1. อัปเดตกล่องคิวปัจจุบันที่กำลังเรียกตรวจ + ควบคุมปุ่มกด
+            activeQueueNumber = data.current_calls[stationName] || "-";
+            const currentCallBox = document.getElementById("current-call-box");
+            currentCallBox.innerText = activeQueueNumber;
+            
+            const currentBadge = document.getElementById("current-badge");
+            const btnFinish = document.getElementById("btn-finish");
+            const btnHold = document.getElementById("btn-hold");
+            const btnRecall = document.getElementById("btn-recall");
+
+            // ปรับแต่งสีคิวและสถานะปุ่ม
+            currentCallBox.classList.remove("text-blue-600", "text-amber-500", "text-gray-400");
+            
+            if (activeQueueNumber !== "-") { 
+                btnFinish.disabled = false; 
+                btnFinish.className = "bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-6 rounded-xl text-lg transition shadow-md cursor-pointer"; 
+                
+                btnHold.disabled = false;
+                btnHold.className = "bg-amber-500 hover:bg-amber-600 text-white font-bold py-3 px-4 rounded-xl text-md transition shadow-md cursor-pointer";
+
+                btnRecall.disabled = false;
+                btnRecall.className = "bg-sky-600 hover:bg-sky-700 text-white font-bold py-3 px-4 rounded-xl text-md transition shadow-md cursor-pointer flex items-center gap-1";
+
+                currentBadge.classList.remove("hidden", "bg-blue-100", "text-blue-800", "bg-amber-100", "text-amber-800", "bg-teal-100", "text-teal-800");
+                if (activeQueueNumber.startsWith("A")) {
+                    currentCallBox.classList.add("text-blue-600");
+                    currentBadge.innerText = "คิว A (นัดหมาย)";
+                    currentBadge.classList.add("bg-blue-100", "text-blue-800");
+                } else if (activeQueueNumber.startsWith("M")) {
+                    currentCallBox.classList.add("text-teal-500");
+                    currentBadge.innerText = "คิว M (หน่วยเคลื่อนที่)";
+                    currentBadge.classList.add("bg-teal-100", "text-teal-800");
+                } else if (activeQueueNumber.startsWith("W")) {
+                    currentCallBox.classList.add("text-amber-500");
+                    currentBadge.innerText = "คิว W (Walk-in)";
+                    currentBadge.classList.add("bg-amber-100", "text-amber-800");
+                } else {
+                    currentBadge.classList.add("hidden");
+                }
+            } else { 
+                currentCallBox.classList.add("text-gray-400");
+                
+                btnFinish.disabled = true; 
+                btnFinish.className = "bg-gray-400 text-white font-bold py-3 px-6 rounded-xl text-lg transition shadow-md"; 
+                
+                btnHold.disabled = true;
+                btnHold.className = "bg-gray-300 text-white font-bold py-3 px-4 rounded-xl text-md transition shadow-md";
+
+                btnRecall.disabled = true;
+                btnRecall.className = "bg-gray-300 text-white font-bold py-3 px-4 rounded-xl text-md transition shadow-md flex items-center gap-1";
+
+                currentBadge.classList.add("hidden");
+            }
+
+            // 2. อัปเดตตารางคิวรอเรียก (Pending & Hold)
+            const waitingPatients = data.waiting_patients[EXAM_TYPE] || [];
+            checkHoldAlerts(waitingPatients);
+            document.getElementById("waiting-count").innerText = waitingPatients.length;
+
+            const countA = waitingPatients.filter(p => p.queue_number.startsWith("A")).length;
+            const countW = waitingPatients.filter(p => p.queue_number.startsWith("W")).length;
+            const countM = waitingPatients.filter(p => p.queue_number.startsWith("M")).length;
+            document.getElementById("count-a").innerText = countA;
+            document.getElementById("count-w").innerText = countW;
+            document.getElementById("count-m").innerText = countM;
+
+            const waitingList = document.getElementById("waiting-list");
+            
+            waitingList.innerHTML = waitingPatients.length === 0 ? `<tr><td colspan="5" class="p-8 text-center text-gray-400">ไม่มีคิวรอเรียกในขณะนี้</td></tr>` : waitingPatients.map(p => {
+                const isA = p.queue_number.startsWith("A");
+                const isM = p.queue_number.startsWith("M");
+                const queueColor = isA ? "text-blue-600" : isM ? "text-teal-600" : "text-amber-600";
+                const badgeStyle = isA ? "bg-blue-100 text-blue-700 border-blue-300" : isM ? "bg-teal-100 text-teal-700 border-teal-300" : "bg-amber-100 text-amber-700 border-amber-300";
+                const typeText = isA ? "นัดหมาย" : isM ? "หน่วยเคลื่อนที่" : "Walk-in";
+
+                const isBusy = !!p.busy_at;
+                const isHold = p.status === 'Hold';
+
+                // 🌟 สถานะตำแหน่งปัจจุบัน (Busy / Hold / Ready)
+                let statusCell = "";
+                if (isBusy) {
+                    statusCell = `<span class="inline-flex items-center gap-1 bg-red-100 text-red-700 text-xs font-bold px-2.5 py-1 rounded-full border border-red-300">🔴 กำลังตรวจที่ ${p.busy_label || p.busy_at}</span>`;
+                } else if (isHold) {
+                    statusCell = `<span class="inline-flex items-center gap-1 bg-amber-100 text-amber-800 text-xs font-bold px-2.5 py-1 rounded-full border border-amber-300 animate-pulse">⏸️ พักคิวไว้</span>`;
+                } else {
+                    statusCell = `<span class="inline-flex items-center gap-1 bg-green-100 text-green-700 text-xs font-bold px-2.5 py-1 rounded-full border border-green-300">🟢 พร้อมเรียก</span>`;
+                }
+
+                // 🌟 ปุ่ม Action กดเรียกคิว
+                let actionCell = "";
+                if (isBusy) {
+                    actionCell = `<button disabled title="คิวนี้กำลังตรวจอยู่ที่ ${p.busy_label || p.busy_at}" class="bg-gray-300 text-gray-500 text-sm font-bold py-1.5 px-4 rounded-lg cursor-not-allowed">⏳ ไม่พร้อม</button>`;
+                } else if (isHold) {
+                    actionCell = `<button onclick="callQueue('${p.queue_number}')" class="bg-amber-600 hover:bg-amber-700 text-white text-sm font-bold py-1.5 px-4 rounded-lg shadow transition flex items-center justify-center gap-1 cursor-pointer">🔊 เรียกคิวคืน</button>`;
+                } else {
+                    actionCell = `<button onclick="callQueue('${p.queue_number}')" class="bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold py-1.5 px-4 rounded-lg shadow transition flex items-center justify-center gap-1 cursor-pointer">🔊 กดเรียกคิว</button>`;
+                }
+                // 🌟 ปุ่มยกเลิก (กรณีสแกนผิดที่/ผิดคน) — แยกคอลัมน์ต่างหาก ไม่วางติดปุ่มเรียกคิว
+                // กันพลาดกดโดนตอนใช้งานผ่าน Tablet (นิ้วสัมผัสไม่แม่นเท่าเมาส์ ถ้าอยู่ใกล้กันเสี่ยงจิ้มโดนยกเลิกคิวผิด)
+                const cancelCell = `<button onclick="cancelCheckin('${p.queue_number}')" title="ยกเลิกการเข้าคิวจุดนี้ (กรณีสแกนผิดที่/ผิดคน)" class="bg-white hover:bg-red-50 border border-red-300 text-red-500 text-xs font-bold py-1.5 px-2.5 rounded-lg transition cursor-pointer">✕ ยกเลิก</button>`;
+
+                const rowBg = isHold ? 'bg-amber-50/80 border-l-4 border-l-amber-500' : 'hover:bg-slate-50';
+
+                return `
+                    <tr class="${rowBg} transition ${isBusy ? 'opacity-60' : ''}">
+                        <td class="p-3 font-bold ${queueColor} font-mono text-lg">${p.queue_number}</td>
+                        <td class="p-3">
+                            <span class="px-2.5 py-1 rounded-md text-xs font-bold border ${badgeStyle}">
+                                ${typeText}
+                            </span>
+                        </td>
+                        <td class="p-3 text-gray-700 font-medium">${p.name}</td>
+                        <td class="p-3 text-center">${statusCell}</td>
+                        <td class="p-3 text-center">${actionCell}</td>
+                        <td class="p-3 text-center border-l-2 border-slate-200">${cancelCell}</td>
+                    </tr>
+                `;
+            }).join('');
+
+            // 3. อัปเดตตารางประวัติการตรวจสำเร็จ (Completed)
+            const historyPatients = data.history_patients[EXAM_TYPE] || [];
+            document.getElementById("history-list").innerHTML = historyPatients.length === 0 ? `<tr><td colspan="3" class="p-8 text-center text-gray-400">ยังไม่มีประวัติในจุดนี้</td></tr>` : historyPatients.map(p => {
+                const isA = p.queue_number.startsWith("A");
+                const isM = p.queue_number.startsWith("M");
+                const queueColor = isA ? "text-blue-600" : isM ? "text-teal-600" : "text-amber-600";
+                return `
+                    <tr class="bg-slate-50">
+                        <td class="p-3 font-bold ${queueColor} font-mono">${p.queue_number}</td>
+                        <td class="p-3 text-gray-600">${p.name}</td>
+                        <td class="p-3 text-sm text-green-600 font-bold">✓ ผ่านจุดนี้แล้ว (${p.updated_at})</td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        // 🔄 ฟังก์ชันเมื่อเปลี่ยนตัวเลือกช่อง
+        function changeRoom(selectedRoom) {
+            const closedRooms = new Set((latestWSData && latestWSData.closed_rooms) || []);
+            if (closedRooms.has(selectedRoom)) {
+                alert(`⚠️ ห้องนี้ถูกปิดใช้งานชั่วคราวอยู่ กรุณาเลือกห้องอื่น (ไปเปิดห้องคืนได้ที่หน้า "ตั้งค่าระบบ" ถ้าจำเป็น)`);
+                return;
+            }
+
+            stationName = selectedRoom;
+            const roomNum = selectedRoom.replace("EKG_", "");
+
+            document.getElementById("room-badge").innerText = `ช่อง ${roomNum}`;
+
+            document.querySelectorAll(".room-btn").forEach(btn => {
+                btn.classList.toggle("active", btn.dataset.room === selectedRoom);
+            });
+
+            renderUI();
+        }
+
+        // 🌟 ฟังก์ชันเรียกคิว
+        async function callQueue(qNum) {
+            try {
+                const response = await fetch(`http://${serverIP}:8000/api/call-queue`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        queue_number: qNum,
+                        station_name: stationName
+                    })
+                });
+                
+                const data = await response.json();
+                if (data.status === "error") {
+                    alert(`⚠️ ไม่สามารถเรียกคิวได้:\n${data.message}`);
+                } else {
+                    console.log(`เรียกคิวสำเร็จ: ${qNum} ที่จุด ${stationName}`);
+                }
+            } catch (error) {
+                console.error("เกิดข้อผิดพลาดในการเชื่อมต่อ API:", error);
+                alert("❌ ไม่สามารถเชื่อมต่อกับ Server ได้ กรุณาตรวจสอบ Network");
+            }
+        }
+
+        // 🌟 ฟังก์ชันกดพักคิวปัจจุบัน (Hold)
+        // 🌟 ฟังก์ชันยกเลิกการเข้าคิว (กรณีสแกนผิดที่/ผิดคน) — คืนสถานะกลับเป็น Lock เหมือนยังไม่เคยสแกน
+        async function cancelCheckin(qNum) {
+            if (!confirm(`ยืนยันยกเลิกคิว ${qNum} ออกจากจุดนี้?\n(กรณีสแกนผิดที่/ผิดคน — คิวนี้จะกลับไปรอสแกนเข้าใหม่ ยังอยู่ในแผนตรวจเหมือนเดิม)`)) {
+                return;
+            }
+            try {
+                const response = await fetch(`http://${serverIP}:8000/api/cancel-checkin`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        queue_number: qNum,
+                        station_name: EXAM_TYPE
+                    })
+                });
+                const data = await response.json();
+                if (!response.ok) {
+                    alert(`⚠️ ยกเลิกไม่สำเร็จ: ${data.detail || 'โปรดลองใหม่'}`);
+                }
+            } catch (error) {
+                console.error("เกิดข้อผิดพลาดในการยกเลิกคิว:", error);
+                alert("❌ ไม่สามารถเชื่อมต่อกับ Server ได้");
+            }
+        }
+
+        async function holdQueueCurrent() {
+            if (activeQueueNumber === "-") return;
+            try {
+                const response = await fetch(`http://${serverIP}:8000/api/hold-queue`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        queue_number: activeQueueNumber,
+                        station_name: stationName
+                    })
+                });
+                const data = await response.json();
+                if (data.status === "success") {
+                    console.log(`พักคิวสำเร็จ: ${activeQueueNumber}`);
+                }
+            } catch (error) {
+                console.error("เกิดข้อผิดพลาดในการสั่งพักคิว:", error);
+            }
+        }
+
+        // 🔁 ฟังก์ชันเรียกคิวซ้ำ (Recall) — ใช้เมื่อคนไข้ไม่ได้ยิน/ไม่มาตามที่เรียกไปแล้ว
+        // ไม่เปลี่ยนสถานะคิว แค่สั่งให้จอ TV เล่นเสียงประกาศซ้ำ + กระพริบจอซ้ำ
+        async function recallQueueCurrent() {
+            if (activeQueueNumber === "-") return;
+            try {
+                const response = await fetch(`http://${serverIP}:8000/api/recall-queue`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        queue_number: activeQueueNumber,
+                        station_name: stationName
+                    })
+                });
+                const data = await response.json();
+                if (data.status !== "success") {
+                    alert(`⚠️ ไม่สามารถเรียกคิวซ้ำได้: ${data.detail || "โปรดลองใหม่"}`);
+                } else {
+                    console.log(`เรียกคิวซ้ำสำเร็จ: ${activeQueueNumber}`);
+                }
+            } catch (error) {
+                console.error("เกิดข้อผิดพลาดในการเรียกคิวซ้ำ:", error);
+                alert("❌ ไม่สามารถเชื่อมต่อกับ Server ได้");
+            }
+        }
+
+        // 🌟 ฟังก์ชันกดตรวจเสร็จสิ้น
+        async function finishQueue() {
+            if (activeQueueNumber === "-") {
+                alert("ไม่มีคิวปัจจุบันที่กำลังตรวจอยู่");
+                return;
+            }
+            try {
+                const response = await fetch(`http://${serverIP}:8000/api/finish-queue`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        queue_number: activeQueueNumber,
+                        station_name: stationName
+                    })
+                });
+                const data = await response.json();
+                if (data.status === "success") {
+                    console.log(`บันทึกตรวจเสร็จสิ้นคิว: ${activeQueueNumber}`);
+                }
+            } catch (error) {
+                console.error("เกิดข้อผิดพลาดในการส่งข้อมูลเสร็จสิ้น:", error);
+            }
+        }
+
+        // 🚨 ระบบแจ้งเตือน Popup เมื่อคิวถูกพัก (Hold) นานเกิน 15 นาที — เตือนซ้ำทุกๆ 15 นาทีที่เพิ่มขึ้น (30, 45, ...)
+        let holdAlertedBuckets = {};
+        let holdAlertQueue = [];
+
+        function checkHoldAlerts(waitingPatients) {
+            waitingPatients.forEach(p => {
+                if (p.status === 'Hold' && typeof p.wait_minutes === 'number') {
+                    const bucket = Math.floor(p.wait_minutes / 15);
+                    const key = p.queue_number;
+                    if (bucket >= 1 && (holdAlertedBuckets[key] || 0) < bucket) {
+                        holdAlertedBuckets[key] = bucket;
+                        holdAlertQueue.push({ queue_number: p.queue_number, name: p.name, wait_minutes: p.wait_minutes });
+                    }
+                }
+            });
+            const overlay = document.getElementById("hold-alert-overlay");
+            if (holdAlertQueue.length > 0 && overlay && overlay.classList.contains("hidden")) {
+                showNextHoldAlert();
+            }
+        }
+
+        function showNextHoldAlert() {
+            if (holdAlertQueue.length === 0) return;
+            const alertItem = holdAlertQueue.shift();
+            document.getElementById("hold-alert-message").innerHTML =
+                `คิว <b>${alertItem.queue_number}</b> (${alertItem.name || '-'}) ถูกพักไว้นาน <b>${alertItem.wait_minutes} นาที</b> แล้ว<br>กรุณาตรวจสอบ`;
+            document.getElementById("hold-alert-overlay").classList.remove("hidden");
+            playHoldAlertSound();
+        }
+
+        function dismissHoldAlert() {
+            document.getElementById("hold-alert-overlay").classList.add("hidden");
+            setTimeout(showNextHoldAlert, 400);
+        }
+
+        function playHoldAlertSound() {
+            try {
+                const ctx = new (window.AudioContext || window.webkitAudioContext)();
+                [880, 660].forEach((freq, i) => {
+                    const osc = ctx.createOscillator();
+                    const gain = ctx.createGain();
+                    osc.connect(gain);
+                    gain.connect(ctx.destination);
+                    osc.frequency.value = freq;
+                    gain.gain.setValueAtTime(0.2, ctx.currentTime + i * 0.25);
+                    osc.start(ctx.currentTime + i * 0.25);
+                    osc.stop(ctx.currentTime + i * 0.25 + 0.2);
+                });
+            } catch (e) { /* เบราว์เซอร์บางตัวอาจบล็อกเสียงถ้ายังไม่มีการคลิกหน้าเว็บมาก่อน */ }
+        }
+    
+        // ==========================================================
+        // 📍 ระบบรับคิว (Check-in) — รวมมาจากหน้า checkin.html เดิม
+        // ==========================================================
+        function extractQueueNumberFromScan(raw) {
+            if (!raw) return "";
+            raw = raw.trim();
+            const match = raw.match(/[?&]q=([A-Za-z0-9]+)/);
+            if (match) return match[1].toUpperCase();
+            return raw.toUpperCase();
+        }
+
+        async function submitCheckin() {
+            const scanInput = document.getElementById("checkin-scan-input");
+            const code = scanInput.value.trim();
+            const msgEl = document.getElementById("checkin-result-msg");
+
+            if (!code) return;
+
+            msgEl.className = "text-sm mt-2 font-bold text-slate-500";
+            msgEl.innerText = "กำลังตรวจสอบ...";
+
+            try {
+                const res = await fetch(`http://${serverIP}:8000/api/checkin-station`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ code, station_name: EXAM_TYPE })
+                });
+                const data = await res.json();
+
+                if (!res.ok) throw new Error(data.detail || "จองคิวไม่สำเร็จ");
+
+                msgEl.className = "text-sm mt-2 font-bold text-emerald-600";
+                msgEl.innerText = `✅ คิว ${data.queue_number} (${data.patient_name || ''}) เข้าคิวเรียบร้อยแล้ว`;
+
+            } catch (err) {
+                msgEl.className = "text-sm mt-2 font-bold text-red-600";
+                msgEl.innerText = `⚠️ ${err.message}`;
+            }
+
+            scanInput.value = "";
+            scanInput.focus();
+        }
+
+    </script>
+
+    <!-- 🚨 Popup แจ้งเตือนคิวรอนานเกินกำหนด (Hold เกิน 15 นาที) -->
+    <div id="hold-alert-overlay" class="hidden fixed inset-0 bg-black/60 flex items-center justify-center z-[9999] p-4">
+        <div class="bg-white rounded-2xl shadow-2xl p-6 max-w-sm w-full border-4 border-red-500">
+            <div class="text-center">
+                <div class="text-5xl mb-3 animate-bounce">🚨</div>
+                <h3 class="text-xl font-black text-red-600 mb-2">คิวรอนานเกินกำหนด!</h3>
+                <p id="hold-alert-message" class="text-gray-700 mb-5 leading-relaxed"></p>
+                <button onclick="dismissHoldAlert()" class="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-3 px-6 rounded-xl transition">
+                    รับทราบ
+                </button>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <script src="auth-check.js"></script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>จัดการคิว / แก้ไขโปรแกรมตรวจ</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+</head>
+<body class="bg-slate-100 p-6 font-sans min-h-screen">
+    <div class="max-w-3xl mx-auto">
+
+        <div class="flex items-center justify-between mb-6">
+            <h1 class="text-2xl font-black text-slate-800 flex items-center gap-2">
+                <i class="fa-solid fa-sliders text-violet-600"></i> จัดการคิว / แก้ไขโปรแกรมตรวจ
+            </h1>
+        </div>
+
+        <!-- 🐞 Debug Panel — แสดงบนหน้าจอตรงๆ ไม่ต้องเปิด Console เพื่อดู -->
+        <div id="debug-panel" class="bg-black text-lime-300 font-mono text-xs rounded-xl p-3 mb-4 max-h-48 overflow-y-auto whitespace-pre-wrap leading-relaxed">
+            รอการทำงาน...
+        </div>
+
+        <!-- 🚫 คิวที่อาจไม่มาตามนัด (Hold นานผิดปกติ) -->
+        <div id="noshow-panel" class="hidden bg-orange-50 border-2 border-orange-400 rounded-2xl p-5 mb-6">
+            <p class="text-orange-700 font-black mb-3 flex items-center gap-2">
+                🚫 คิวที่อาจไม่มาแล้ว (พักไว้นานผิดปกติ) — <span id="noshow-count">0</span> คิว
+            </p>
+            <div id="noshow-list" class="space-y-2"></div>
+        </div>
+
+        <!-- 📋 รายชื่อรอกำหนดโปรแกรมตรวจ (ลงทะเบียนแล้ว แต่ยังไม่ได้เลือกว่าต้องตรวจอะไรบ้าง) -->
+        <div class="bg-white rounded-2xl shadow-lg border-2 border-violet-300 p-5 mb-6">
+            <div class="flex items-center justify-between mb-3">
+                <p class="font-black text-violet-700 flex items-center gap-2">
+                    📋 รอกำหนดโปรแกรมตรวจ (<span id="pending-count">0</span> คน)
+                </p>
+                <button onclick="loadPendingAssignment()" class="text-slate-400 hover:text-violet-600 text-sm">
+                    <i class="fa-solid fa-rotate"></i>
+                </button>
+            </div>
+            <div id="pending-list" class="space-y-2"></div>
+        </div>
+
+        <!-- ช่องค้นหาคิว -->
+        <div class="bg-white rounded-2xl shadow-lg border border-gray-200 p-5 mb-6">
+            <label class="block text-sm font-bold text-gray-600 mb-2">ค้นหาด้วยหมายเลขคิว (เช่น W004, A012)</label>
+            <div class="flex gap-2">
+                <input id="search-input" type="text" placeholder="กรอกหมายเลขคิว..."
+                       class="flex-1 border border-gray-300 rounded-xl p-3 focus:outline-none focus:border-violet-500 uppercase"
+                       onkeydown="if(event.key==='Enter') searchQueue()">
+                <button onclick="searchQueue()" class="bg-violet-600 hover:bg-violet-700 text-white font-bold px-6 rounded-xl transition">
+                    <i class="fa-solid fa-magnifying-glass mr-1"></i> ค้นหา
+                </button>
+            </div>
+            <p id="search-error" class="hidden text-sm text-red-600 font-semibold mt-2"></p>
+        </div>
+
+        <!-- ผลลัพธ์ / ฟอร์มแก้ไข -->
+        <div id="result-box" class="hidden bg-white rounded-2xl shadow-lg border border-gray-200 p-6">
+            <div class="flex items-center justify-between border-b pb-4 mb-4">
+                <div>
+                    <p class="text-xs text-gray-400">หมายเลขคิว</p>
+                    <h2 id="r-queue-num" class="text-3xl font-black text-violet-700 font-mono"></h2>
+                </div>
+                <div class="text-right">
+                    <p class="text-xs text-gray-400">ชื่อผู้ป่วย</p>
+                    <p id="r-patient-name" class="text-lg font-bold text-gray-800"></p>
+                </div>
+            </div>
+
+            <div class="flex items-center justify-between mb-2">
+                <p class="text-xs text-gray-500">
+                    ✅ ปรับได้เฉพาะจุดที่ <b>ยังไม่เริ่มตรวจ</b> เท่านั้น &nbsp;|&nbsp;
+                    🔒 จุดที่ <b>กำลังตรวจอยู่</b> หรือ <b>ตรวจเสร็จแล้ว</b> จะแก้ไขไม่ได้ (ป้องกันข้อมูลผิดพลาด)
+                </p>
+                <button type="button" onclick="toggleSelectAll()" id="select-all-btn" class="shrink-0 text-xs font-bold text-violet-600 hover:text-violet-800 border border-violet-300 hover:bg-violet-50 rounded-lg px-3 py-1.5 whitespace-nowrap">
+                    ☑️ เลือกทั้งหมด
+                </button>
+            </div>
+
+            <div id="station-rows" class="space-y-2 mb-5"></div>
+
+            <div class="flex items-center gap-2 text-sm font-bold text-slate-700 mb-5 bg-sky-50 border border-sky-200 rounded-lg p-3">
+                <input type="checkbox" id="doctor-toggle" class="w-4 h-4 accent-sky-600"> 👨‍⚕️ ต้องพบแพทย์หลังตรวจครบ
+                <span id="doctor-lock-note" class="hidden text-xs font-normal text-slate-400 ml-2">(กำลังตรวจ/ตรวจเสร็จแล้ว แก้ไม่ได้)</span>
+            </div>
+
+            <button onclick="saveChanges()" id="save-btn" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded-xl transition shadow-md">
+                💾 บันทึกการแก้ไขโปรแกรมตรวจ
+            </button>
+            <p id="save-msg" class="hidden text-center text-sm font-bold mt-3"></p>
+        </div>
+    </div>
+
+    <script>
+        const serverIP = "10.121.111.233"; // 👈 IP Server (สำรองไว้เผื่อใช้)
+        const API_BASE = window.location.origin; // ✅ ใช้ที่อยู่ของหน้านี้เอง กัน cookie หลุดตอน origin ไม่ตรงกัน
+        const GENERAL_STATIONS = ["Blood", "Eye", "Ear", "Lung", "EKG", "XRay", "Ultrasound", "Mammogram", "OBGYN"];
+        const STATION_ICON = { Blood: "🩸", Eye: "👁️", Ear: "👂", Lung: "🫁", EKG: "🫀", XRay: "🦴", Ultrasound: "🩺", Mammogram: "🎗️", OBGYN: "🤰" };
+
+        let currentQueueData = null;
+
+        // 🐞 แสดง log บนหน้าจอโดยตรง — ไม่ต้องเปิด Console (F12) ก็เห็นได้
+        const debugLines = [];
+        function dlog(msg) {
+            const time = new Date().toLocaleTimeString('th-TH');
+            debugLines.push(`[${time}] ${msg}`);
+            if (debugLines.length > 30) debugLines.shift();
+            const panel = document.getElementById("debug-panel");
+            if (panel) {
+                panel.innerText = debugLines.join('\n');
+                panel.scrollTop = panel.scrollHeight; // ✅ เลื่อนลงล่างสุดอัตโนมัติ กันพลาด log ล่าสุด
+            }
+            console.log(msg);
+        }
+        dlog("🔧 หน้าเว็บโหลดสำเร็จ (เวอร์ชัน DEBUG-2026-08-26-v4)");
+
+        // 🚨 ดักจับ error ที่ไม่คาดคิดทุกตัว (นอกเหนือจาก try/catch ที่ครอบไว้แล้ว) ให้ขึ้นในกล่อง debug ด้วย
+        window.addEventListener('error', (event) => {
+            dlog(`🚨 [UNCAUGHT ERROR] ${event.message} (${event.filename}:${event.lineno}:${event.colno})`);
+        });
+        window.addEventListener('unhandledrejection', (event) => {
+            dlog(`🚨 [UNHANDLED PROMISE REJECTION] ${event.reason}`);
+        });
+
+        // 🚫 โหลดรายชื่อคิวที่อาจไม่มาแล้ว (Hold นานผิดปกติ)
+        async function loadNoShowCandidates() {
+            try {
+                const res = await fetch(`${API_BASE}/api/noshow-candidates`, { credentials: 'include' });
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                const data = await res.json();
+
+                const panel = document.getElementById("noshow-panel");
+                const listEl = document.getElementById("noshow-list");
+                const countEl = document.getElementById("noshow-count");
+
+                if (data.count === 0) {
+                    panel.classList.add("hidden");
+                    return;
+                }
+
+                panel.classList.remove("hidden");
+                countEl.innerText = data.count;
+
+                listEl.innerHTML = data.candidates.map(c => `
+                    <div class="flex items-center justify-between bg-white border border-orange-300 rounded-lg px-4 py-2.5">
+                        <div class="flex items-center gap-3">
+                            <span class="font-mono font-black text-orange-700">${c.queue_number}</span>
+                            <span class="text-sm text-gray-600">${c.patient_name || ''}</span>
+                            <span class="text-xs bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full font-bold">${c.label}</span>
+                            <span class="text-xs text-gray-400">พักไว้ ${c.held_minutes} นาทีแล้ว</span>
+                        </div>
+                        <button onclick="markNoShow('${c.queue_number}', '${c.station}')"
+                                class="bg-orange-600 hover:bg-orange-700 text-white text-xs font-bold px-3 py-1.5 rounded-lg">
+                            🚫 ทำเครื่องหมายไม่มา
+                        </button>
+                    </div>
+                `).join('');
+            } catch (err) {
+                console.error("โหลดรายชื่อคิวที่อาจไม่มาไม่สำเร็จ:", err);
+            }
+        }
+
+        async function markNoShow(queueNumber, stationName) {
+            if (!confirm(`ยืนยันว่าคิว ${queueNumber} ไม่มาที่จุดนี้จริงหรือไม่?\nการกระทำนี้จะข้ามจุดนี้ไปเลย (Skipped)`)) {
+                return;
+            }
+            try {
+                const res = await fetch(`${API_BASE}/api/mark-noshow`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    body: JSON.stringify({ queue_number: queueNumber, station_name: stationName })
+                });
+                if (!res.ok) {
+                    const errData = await res.json().catch(() => ({}));
+                    throw new Error(errData.detail || `HTTP ${res.status}`);
+                }
+                await loadNoShowCandidates();
+            } catch (err) {
+                alert(`❌ ทำรายการไม่สำเร็จ: ${err.message}`);
+            }
+        }
+
+        loadNoShowCandidates();
+        setInterval(loadNoShowCandidates, 30000);
+
+        // 📋 รายชื่อคนไข้ที่ลงทะเบียนแล้วแต่ยังไม่ได้กำหนดโปรแกรมตรวจ — เรียงตามลำดับที่มาก่อน-หลัง
+        async function loadPendingAssignment() {
+            try {
+                const res = await fetch(`${API_BASE}/api/pending-assignment`, { credentials: 'include' });
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                const data = await res.json();
+
+                document.getElementById("pending-count").innerText = data.count;
+                const listEl = document.getElementById("pending-list");
+
+                if (data.count === 0) {
+                    listEl.innerHTML = `<p class="text-slate-400 text-sm text-center py-3">— ไม่มีรายการรอ —</p>`;
+                    return;
+                }
+
+                listEl.innerHTML = data.patients.map(p => {
+                    const typeLabel = p.queue_type === 'walkin' ? 'Walk-in' : p.queue_type === 'mobile' ? 'หน่วยเคลื่อนที่' : 'นัดหมาย';
+                    const typeColor = p.queue_type === 'walkin' ? 'bg-amber-100 text-amber-700' : p.queue_type === 'mobile' ? 'bg-teal-100 text-teal-700' : 'bg-blue-100 text-blue-700';
+                    return `
+                        <div class="w-full flex items-center bg-violet-50 hover:bg-violet-100 border border-violet-200 rounded-xl overflow-hidden transition">
+                            <button onclick="selectPendingPatient('${p.queue_number}')"
+                                    class="flex-1 flex items-center justify-between px-4 py-3 text-left cursor-pointer">
+                                <div class="flex items-center gap-3">
+                                    <span class="font-mono font-black text-violet-700 text-lg">${p.queue_number}</span>
+                                    <span class="font-bold text-gray-700">${p.patient_name}</span>
+                                    <span class="text-xs font-bold px-2 py-0.5 rounded-full ${typeColor}">${typeLabel}</span>
+                                </div>
+                                <span class="text-xs text-gray-400">ลงทะเบียน ${p.created_at_str}</span>
+                            </button>
+                            <button onclick="cancelRegistration('${p.queue_number}')" title="ยกเลิกคิวนี้ (กรณีลงทะเบียนผิดประเภทตั้งแต่ต้น)"
+                                    class="shrink-0 mr-2 bg-white hover:bg-red-50 border border-red-300 text-red-500 text-xs font-bold py-1.5 px-2.5 rounded-lg transition cursor-pointer">
+                                ✕ ยกเลิก
+                            </button>
+                        </div>
+                    `;
+                }).join('');
+            } catch (err) {
+                console.error("โหลดรายชื่อรอกำหนดโปรแกรมไม่สำเร็จ:", err);
+            }
+        }
+
+        function selectPendingPatient(queueNumber) {
+            document.getElementById("search-input").value = queueNumber;
+            searchQueue();
+            document.getElementById("result-box").scrollIntoView({ behavior: "smooth", block: "start" });
+        }
+
+        // 🌟 ยกเลิกคิวตั้งแต่ตอนลงทะเบียน — กรณีลงผิดประเภท (เช่น ตั้งใจลง Walk-in แต่ดันกดเลือก Mobile/นัดหมาย)
+        async function cancelRegistration(queueNumber) {
+            if (!confirm(`ยืนยันยกเลิกคิว ${queueNumber}?\n(ใช้กรณีลงทะเบียนผิดตั้งแต่ต้น เช่น เลือกประเภทคิวผิด — คิวนี้จะถูกยกเลิกถาวร ไม่สามารถกู้คืนได้)`)) {
+                return;
+            }
+            try {
+                const res = await fetch(`${API_BASE}/api/cancel-registration`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    body: JSON.stringify({ queue_number: queueNumber })
+                });
+                const data = await res.json();
+                if (!res.ok) {
+                    alert(`⚠️ ยกเลิกไม่สำเร็จ: ${data.detail || 'โปรดลองใหม่'}`);
+                    return;
+                }
+                loadPendingAssignment();
+            } catch (err) {
+                alert("❌ ไม่สามารถเชื่อมต่อกับ Server ได้");
+            }
+        }
+
+        loadPendingAssignment();
+        setInterval(loadPendingAssignment, 15000);
+
+        function statusBadge(status) {
+            const map = {
+                NotAssigned: `<span class="bg-gray-100 text-gray-400 text-xs font-bold px-2.5 py-1 rounded-full">⬜ ยังไม่เลือก</span>`,
+                Lock:      `<span class="bg-violet-100 text-violet-700 text-xs font-bold px-2.5 py-1 rounded-full border border-violet-300">🔒 กำหนดแล้ว รอสแกนเข้าคิว</span>`,
+                Pending:   `<span class="bg-emerald-100 text-emerald-700 text-xs font-bold px-2.5 py-1 rounded-full border border-emerald-300">🟢 รอเรียก</span>`,
+                Hold:      `<span class="bg-amber-100 text-amber-800 text-xs font-bold px-2.5 py-1 rounded-full border border-amber-300">⏸️ พักคิว</span>`,
+                Calling:   `<span class="bg-red-100 text-red-700 text-xs font-bold px-2.5 py-1 rounded-full border border-red-300">🔴 กำลังตรวจ</span>`,
+                Completed: `<span class="bg-blue-100 text-blue-700 text-xs font-bold px-2.5 py-1 rounded-full border border-blue-300">✅ เสร็จแล้ว</span>`,
+                Skipped:   `<span class="bg-slate-100 text-slate-400 text-xs font-bold px-2.5 py-1 rounded-full border border-slate-300 line-through">ข้ามจุดนี้</span>`,
+            };
+            return map[status] || `<span class="bg-gray-100 text-gray-500 text-xs font-bold px-2.5 py-1 rounded-full">${status}</span>`;
+        }
+
+        async function searchQueue() {
+            const qNum = document.getElementById("search-input").value.trim().toUpperCase();
+            dlog(`🔍 กำลังค้นหาคิว: "${qNum}"`);
+            const errorBox = document.getElementById("search-error");
+            const resultBox = document.getElementById("result-box");
+            errorBox.classList.add("hidden");
+            resultBox.classList.add("hidden");
+
+            if (!qNum) {
+                dlog("⚠️ ไม่มีเลขคิวในช่องค้นหา — ยกเลิกการค้นหา");
+                return;
+            }
+
+            try {
+                const res = await fetch(`${API_BASE}/api/queue-status/${qNum}`, { credentials: 'include' });
+                dlog(`📥 ผลค้นหาคิว ${qNum}: HTTP ${res.status}`);
+                if (!res.ok) {
+                    errorBox.innerText = `⚠️ ไม่พบคิว ${qNum} ในวันนี้`;
+                    errorBox.classList.remove("hidden");
+                    dlog(`❌ ไม่พบคิว ${qNum} — currentQueueData จะไม่ถูกตั้งค่า`);
+                    return;
+                }
+                const data = await res.json();
+                currentQueueData = data;
+                dlog(`✅ ตั้งค่า currentQueueData แล้ว: คิว ${data.queue_number}, ชื่อ ${data.patient_name}`);
+                renderQueue(data);
+                resultBox.classList.remove("hidden");
+            } catch (err) {
+                dlog(`❌ เชื่อมต่อ Server ไม่สำเร็จ: ${err.message}`);
+                errorBox.innerText = "❌ ไม่สามารถเชื่อมต่อกับ Server ได้";
+                errorBox.classList.remove("hidden");
+            }
+        }
+
+        function renderQueue(data) {
+            document.getElementById("r-queue-num").innerText = data.queue_number;
+            document.getElementById("r-patient-name").innerText = data.patient_name;
+
+            const statusMap = {};
+            data.stations_status.forEach(s => statusMap[s.station] = s.status);
+
+            const rowsBox = document.getElementById("station-rows");
+            rowsBox.innerHTML = GENERAL_STATIONS.map(st => {
+                const status = statusMap[st] || "Lock";
+                const editable = ["NotAssigned", "Lock", "Pending", "Hold", "Skipped"].includes(status);
+                const checkedNow = ["Lock", "Pending", "Hold", "Calling", "Completed"].includes(status);
+                return `
+                    <label class="flex items-center justify-between gap-3 p-3 rounded-xl border ${editable ? 'border-gray-200 hover:border-violet-400 cursor-pointer' : 'border-gray-100 bg-gray-50 opacity-70 cursor-not-allowed'}">
+                        <span class="flex items-center gap-2 font-semibold text-gray-700">
+                            <input type="checkbox" data-station="${st}" class="station-toggle w-4 h-4 accent-violet-600" ${checkedNow ? "checked" : ""} ${editable ? "" : "disabled"}>
+                            ${STATION_ICON[st]} ${st}
+                        </span>
+                        ${statusBadge(status)}
+                    </label>
+                `;
+            }).join('');
+
+            const doctorStatus = statusMap['Doctor'] || 'NotAssigned';
+            const doctorEditable = ["NotAssigned", "Lock", "Pending", "Hold", "Skipped"].includes(doctorStatus);
+            const doctorChecked = ["Lock", "Pending", "Hold", "Calling", "Completed"].includes(doctorStatus);
+            const doctorToggle = document.getElementById("doctor-toggle");
+            doctorToggle.checked = doctorChecked;
+            doctorToggle.disabled = !doctorEditable;
+            document.getElementById("doctor-lock-note").classList.toggle("hidden", doctorEditable);
+
+            document.getElementById("save-msg").classList.add("hidden");
+            document.getElementById("select-all-btn").innerText = "☑️ เลือกทั้งหมด";
+        }
+
+        // ☑️ เลือก/ยกเลิกทั้งหมด — มีผลเฉพาะช่องที่ยังแก้ไขได้ (ไม่แตะช่องที่ล็อกไว้เพราะกำลังตรวจ/ตรวจเสร็จแล้ว)
+        function toggleSelectAll() {
+            const editableBoxes = Array.from(document.querySelectorAll(".station-toggle:not(:disabled)"));
+            const doctorToggle = document.getElementById("doctor-toggle");
+            const doctorEditable = !doctorToggle.disabled;
+
+            // ถ้าทุกช่องที่แก้ไขได้ถูกติ๊กอยู่แล้วทั้งหมด -> ยกเลิกทั้งหมด, ไม่งั้นติ๊กทั้งหมด
+            const allChecked = editableBoxes.every(chk => chk.checked) && (!doctorEditable || doctorToggle.checked);
+            const newState = !allChecked;
+
+            editableBoxes.forEach(chk => chk.checked = newState);
+            if (doctorEditable) doctorToggle.checked = newState;
+
+            document.getElementById("select-all-btn").innerText = newState ? "⬜ ยกเลิกทั้งหมด" : "☑️ เลือกทั้งหมด";
+        }
+
+        async function saveChanges() {
+            dlog("🖱️ กดปุ่มบันทึก — เริ่ม saveChanges()");
+            if (!currentQueueData) {
+                dlog("⚠️ currentQueueData เป็น null — ยังไม่ได้ค้นหาคิวก่อนกดบันทึก (ต้องกด 'ค้นหา' ก่อน)");
+                return;
+            }
+            const saveBtn = document.getElementById("save-btn");
+            const saveMsg = document.getElementById("save-msg");
+            saveBtn.disabled = true;
+            saveBtn.innerText = "⏳ กำลังบันทึก...";
+
+            const chosenStations = Array.from(document.querySelectorAll(".station-toggle:checked")).map(chk => chk.dataset.station);
+            const includeDoctor = document.getElementById("doctor-toggle").checked;
+            dlog(`📋 จุดที่เลือกไว้: [${chosenStations.join(', ')}] | ต้องพบแพทย์: ${includeDoctor}`);
+
+            try {
+                dlog(`📡 กำลังยิง POST ไปที่: ${API_BASE}/api/assign-program (คิว: ${currentQueueData.queue_number})`);
+                const res = await fetch(`${API_BASE}/api/assign-program`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    body: JSON.stringify({
+                        queue_number: currentQueueData.queue_number,
+                        stations: chosenStations,
+                        include_doctor: includeDoctor
+                    })
+                });
+                dlog(`📥 ได้ผลลัพธ์กลับมา สถานะ HTTP: ${res.status}`);
+
+                if (!res.ok) {
+                    const errData = await res.json().catch(() => ({}));
+                    dlog(`❌ Backend ตอบว่าไม่สำเร็จ: ${JSON.stringify(errData)}`);
+                    throw new Error(errData.detail || `บันทึกไม่สำเร็จ (HTTP ${res.status})`);
+                }
+                const data = await res.json();
+                dlog(`📦 ข้อมูลที่ backend ส่งกลับมา: ${JSON.stringify(data)}`);
+
+                if (data.status === "success") {
+                    dlog("✅ บันทึกสำเร็จ — กำลังรีเฟรชหน้าจอ...");
+                    const savedQueueNumber = currentQueueData.queue_number;
+                    await searchQueue();
+                    document.getElementById("search-input").value = savedQueueNumber;
+                    loadPendingAssignment();
+
+                    saveMsg.innerText = "✅ บันทึกการแก้ไขโปรแกรมตรวจเรียบร้อยแล้ว";
+                    saveMsg.className = "text-center text-sm font-bold mt-3 text-emerald-600";
+                    saveMsg.classList.remove("hidden");
+                    dlog("🎉 แสดงข้อความสำเร็จแล้ว — เสร็จสิ้นกระบวนการ saveChanges()");
+                } else {
+                    dlog(`❌ data.status ไม่ใช่ 'success': ${JSON.stringify(data)}`);
+                    throw new Error("บันทึกไม่สำเร็จ");
+                }
+            } catch (err) {
+                dlog(`❌ เกิด error ใน saveChanges(): ${err.message}`);
+                saveMsg.innerText = `❌ บันทึกไม่สำเร็จ: ${err.message}`;
+                saveMsg.className = "text-center text-sm font-bold mt-3 text-red-600";
+                saveMsg.classList.remove("hidden");
+            } finally {
+                saveBtn.disabled = false;
+                saveBtn.innerText = "💾 บันทึกการแก้ไขโปรแกรมตรวจ";
+                console.log("🏁 saveChanges() จบการทำงาน (finally block)");
+            }
+        }
+    </script>
+</body>
+</html>

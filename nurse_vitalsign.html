@@ -1,0 +1,490 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <script src="auth-check.js"></script>
+    <meta charset="UTF-8">
+    <title>1. จุดวัดสัญญาณชีพ (Vital Sign)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-100 p-6 font-sans">
+    <div class="max-w-6xl mx-auto bg-white p-6 rounded-2xl shadow-lg border border-gray-200">
+        
+        <!-- Header -->
+        <div class="flex justify-between items-center border-b pb-4 mb-6">
+            <div>
+                <h1 class="text-2xl font-black text-slate-800 flex items-center gap-2">🩺 1. จุดวัดสัญญาณชีพ (Vital Sign)</h1>
+                <p class="text-xs text-slate-500 mt-1">รองรับการแยกประเภท <span class="text-blue-600 font-bold">คิว A (นัดหมาย)</span> และ <span class="text-amber-600 font-bold">คิว W (Walk-in)</span></p>
+            </div>
+            <span class="bg-blue-100 text-blue-800 font-bold px-4 py-1.5 rounded-full text-sm shadow-sm">พยาบาลประจำจุด</span>
+        </div>
+        
+        <!-- Current Active Call Section -->
+        <div class="bg-blue-50 border border-blue-200 p-5 rounded-xl mb-6 flex justify-between items-center shadow-sm">
+            <div>
+                <p class="text-sm text-blue-600 font-bold">คิวปัจจุบันที่กำลังเรียกตรวจ:</p>
+                <div class="flex items-center gap-3 mt-1">
+                    <h2 id="current-call-box" class="text-5xl font-black text-blue-700 font-mono">-</h2>
+                    <!-- Badge บอกประเภทคิวปัจจุบัน -->
+                    <span id="current-badge" class="hidden text-xs font-bold px-3 py-1 rounded-full shadow-sm"></span>
+                </div>
+            </div>
+
+            <!-- 🌟 ปุ่มควบคุม: เพิ่มปุ่มพักคิว (Hold) ข้างปุ่มตรวจเสร็จ -->
+            <div class="flex gap-2">
+                <button id="btn-recall" onclick="recallQueueCurrent()" disabled class="bg-gray-300 text-white font-bold py-3 px-4 rounded-xl text-md transition shadow-md flex items-center gap-1">
+                    🔁 เรียกซ้ำ
+                </button>
+                <button id="btn-hold" onclick="holdQueueCurrent()" disabled class="bg-gray-300 text-white font-bold py-3 px-4 rounded-xl text-md transition shadow-md flex items-center gap-1">
+                    ⏸️ พักคิว
+                </button>
+                <button id="btn-finish" onclick="finishQueue()" disabled class="bg-gray-400 text-white font-bold py-3 px-6 rounded-xl text-lg transition shadow-md">
+                    ✅ ตรวจเสร็จสิ้น (ส่งคิวต่อ)
+                </button>
+            </div>
+        </div>
+
+        <!-- Main Content Grid -->
+        <div class="grid grid-cols-2 gap-6">
+            
+            <!-- ตารางซ้าย: ผู้ป่วยรอเรียกคิว (Pending / Hold) -->
+            <div>
+                <div class="flex justify-between items-center mb-3">
+                    <h3 class="text-lg font-bold text-gray-700 flex items-center gap-2">📋 รายชื่อผู้ป่วยที่รอเรียกคิว (<span id="waiting-count">0</span> คน)</h3>
+                    <!-- Badge สรุปจำนวน A และ W -->
+                    <div class="flex gap-1.5 text-xs font-bold">
+                        <span class="bg-blue-100 text-blue-700 px-2 py-0.5 rounded-md">A: <span id="count-a">0</span></span>
+                        <span class="bg-amber-100 text-amber-700 px-2 py-0.5 rounded-md">W: <span id="count-w">0</span></span>
+                    </div>
+                </div>
+
+                <div class="border border-gray-200 rounded-xl overflow-hidden shadow-sm">
+                    <table class="w-full text-left border-collapse">
+                        <thead class="bg-gray-50 text-gray-600 text-sm font-bold border-b border-gray-200">
+                            <tr>
+                                <th class="p-3 w-16 text-center">ประเภท</th>
+                                <th class="p-3">เลขคิว</th>
+                                <th class="p-3">ชื่อ - นามสกุล</th>
+                                <th class="p-3 text-center">สถานะ</th>
+                                <th class="p-3 text-center">จัดการคิว</th>
+                            </tr>
+                        </thead>
+                        <tbody id="waiting-list" class="divide-y divide-gray-100 bg-white text-sm">
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- ตารางขวา: ประวัติตรวจเสร็จล่าสุด (Completed) -->
+            <div>
+                <h3 class="text-lg font-bold text-green-700 mb-3 flex items-center gap-2">⏱️ ประวัติตรวจเสร็จล่าสุด (10 คนล่าสุด)</h3>
+                <div class="border border-gray-200 rounded-xl overflow-hidden shadow-sm">
+                    <table class="w-full text-left border-collapse">
+                        <thead class="bg-green-50 text-green-700 text-sm font-bold border-b border-green-200">
+                            <tr>
+                                <th class="p-3 w-16 text-center">ประเภท</th>
+                                <th class="p-3">เลขคิว</th>
+                                <th class="p-3">ชื่อ - นามสกุล</th>
+                                <th class="p-3">เวลาสำเร็จ</th>
+                            </tr>
+                        </thead>
+                        <tbody id="history-list" class="divide-y divide-gray-100 bg-white text-sm">
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- 🌟 Modal: กำหนดโปรแกรมตรวจ (Program Assignment) หลังคัดกรอง VitalSign เสร็จ -->
+    <div id="program-modal" class="hidden fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg p-6">
+            <h3 class="text-xl font-black text-slate-800 mb-1">🗂️ กำหนดโปรแกรมตรวจ</h3>
+            <p class="text-sm text-slate-500 mb-4">คิว <span id="pm-queue-num" class="font-bold text-blue-600"></span> — <span id="pm-patient-name"></span></p>
+            <p class="text-xs text-slate-500 mb-3">เลือกเฉพาะจุดตรวจที่คนไข้รายนี้ต้องเข้าจริง จุดที่ไม่เลือกจะถูกข้าม (Skip) ไม่บล็อกขั้นตอนถัดไป</p>
+
+            <div class="grid grid-cols-2 gap-2 text-sm mb-4" id="pm-station-list">
+                <label class="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg p-2.5 cursor-pointer hover:border-blue-400">
+                    <input type="checkbox" value="Blood" class="pm-checkbox w-4 h-4 accent-blue-600"> 🩸 เจาะเลือด
+                </label>
+                <label class="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg p-2.5 cursor-pointer hover:border-blue-400">
+                    <input type="checkbox" value="Eye" class="pm-checkbox w-4 h-4 accent-blue-600"> 👁️ ตรวจตา
+                </label>
+                <label class="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg p-2.5 cursor-pointer hover:border-blue-400">
+                    <input type="checkbox" value="Ear" class="pm-checkbox w-4 h-4 accent-blue-600"> 👂 ตรวจหู
+                </label>
+                <label class="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg p-2.5 cursor-pointer hover:border-blue-400">
+                    <input type="checkbox" value="Lung" class="pm-checkbox w-4 h-4 accent-blue-600"> 🫁 สมรรถภาพปอด
+                </label>
+                <label class="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg p-2.5 cursor-pointer hover:border-blue-400">
+                    <input type="checkbox" value="EKG" class="pm-checkbox w-4 h-4 accent-blue-600"> 🫀 EKG
+                </label>
+                <label class="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg p-2.5 cursor-pointer hover:border-blue-400">
+                    <input type="checkbox" value="XRay" class="pm-checkbox w-4 h-4 accent-blue-600"> 🦴 X-Ray
+                </label>
+            </div>
+
+            <label class="flex items-center gap-2 text-sm font-bold text-slate-700 mb-4 bg-sky-50 border border-sky-200 rounded-lg p-2.5">
+                <input type="checkbox" id="pm-include-doctor" class="w-4 h-4 accent-sky-600" checked> 👨‍⚕️ ต้องพบแพทย์หลังตรวจเสร็จ
+            </label>
+
+            <div class="flex gap-3">
+                <button onclick="closeProgramModal()" class="flex-1 bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold py-2.5 rounded-xl transition">ยกเลิก</button>
+                <button onclick="confirmProgram()" id="pm-confirm-btn" class="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2.5 rounded-xl transition">✅ ยืนยันโปรแกรมตรวจ &amp; ส่งคิวต่อ</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Config Server 
+        const serverIP = "10.121.111.233"; // 👈 IP Server ของคุณ
+        const stationName = "VitalSign";   
+        let activeQueueNumber = "-";       
+
+        // 🌐 เชื่อมต่อระบบ WebSocket
+        const ws = new WebSocket(`ws://${serverIP}:8000/ws/queue`);
+        ws.onmessage = function(event) {
+            const data = JSON.parse(event.data);
+            
+            // 1. อัปเดตกล่องคิวปัจจุบัน + ควบคุมปุ่มกด
+            activeQueueNumber = data.current_calls[stationName] || "-";
+            document.getElementById("current-call-box").innerText = activeQueueNumber;
+            
+            const currentBadge = document.getElementById("current-badge");
+            const btnFinish = document.getElementById("btn-finish");
+            const btnHold = document.getElementById("btn-hold");
+            const btnRecall = document.getElementById("btn-recall");
+
+            if (activeQueueNumber !== "-") { 
+                btnFinish.disabled = false; 
+                btnFinish.className = "bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-6 rounded-xl text-lg transition shadow-md cursor-pointer"; 
+                
+                btnHold.disabled = false;
+                btnHold.className = "bg-amber-500 hover:bg-amber-600 text-white font-bold py-3 px-4 rounded-xl text-md transition shadow-md cursor-pointer";
+
+                btnRecall.disabled = false;
+                btnRecall.className = "bg-sky-600 hover:bg-sky-700 text-white font-bold py-3 px-4 rounded-xl text-md transition shadow-md cursor-pointer flex items-center gap-1";
+
+                currentBadge.classList.remove("hidden", "bg-blue-100", "text-blue-800", "bg-amber-100", "text-amber-800");
+                if (activeQueueNumber.startsWith("A")) {
+                    currentBadge.innerText = "คิว A (นัดหมาย)";
+                    currentBadge.classList.add("bg-blue-100", "text-blue-800");
+                } else if (activeQueueNumber.startsWith("W")) {
+                    currentBadge.innerText = "คิว W (Walk-in)";
+                    currentBadge.classList.add("bg-amber-100", "text-amber-800");
+                } else {
+                    currentBadge.classList.add("hidden");
+                }
+            } else { 
+                btnFinish.disabled = true; 
+                btnFinish.className = "bg-gray-400 text-white font-bold py-3 px-6 rounded-xl text-lg transition shadow-md"; 
+                
+                btnHold.disabled = true;
+                btnHold.className = "bg-gray-300 text-white font-bold py-3 px-4 rounded-xl text-md transition shadow-md";
+
+                btnRecall.disabled = true;
+                btnRecall.className = "bg-gray-300 text-white font-bold py-3 px-4 rounded-xl text-md transition shadow-md flex items-center gap-1";
+
+                currentBadge.classList.add("hidden");
+            }
+
+            // 2. อัปเดตรายชื่อคนไข้รอเรียกคิว (Pending & Hold)
+            const waitingPatients = data.waiting_patients[stationName] || [];
+            checkHoldAlerts(waitingPatients);
+            document.getElementById("waiting-count").innerText = waitingPatients.length;
+
+            const countA = waitingPatients.filter(p => p.queue_number.startsWith("A")).length;
+            const countW = waitingPatients.filter(p => p.queue_number.startsWith("W")).length;
+            document.getElementById("count-a").innerText = countA;
+            document.getElementById("count-w").innerText = countW;
+
+            const waitingList = document.getElementById("waiting-list");
+            if (waitingPatients.length === 0) {
+                waitingList.innerHTML = `<tr><td colspan="5" class="p-8 text-center text-gray-400">ไม่มีคิวรอเรียกในขณะนี้</td></tr>`;
+            } else {
+                waitingList.innerHTML = waitingPatients.map(p => {
+                    const isA = p.queue_number.startsWith("A");
+                    const typeBadge = isA 
+                        ? `<span class="bg-blue-100 text-blue-700 font-bold px-2 py-0.5 rounded text-xs">A</span>`
+                        : `<span class="bg-amber-100 text-amber-700 font-bold px-2 py-0.5 rounded text-xs">W</span>`;
+
+                    const isBusy = !!p.busy_at;
+                    const isHold = p.status === 'Hold';
+
+                    // 🌟 แสดง Badge สถานะ (กรณี Hold จะติดป้ายเตือนสีส้ม)
+                    let statusCell = "";
+                    if (isBusy) {
+                        statusCell = `<span class="inline-flex items-center gap-1 bg-red-100 text-red-700 text-xs font-bold px-2.5 py-1 rounded-full border border-red-300">🔴 กำลังตรวจที่ ${p.busy_label || p.busy_at}</span>`;
+                    } else if (isHold) {
+                        statusCell = `<span class="inline-flex items-center gap-1 bg-amber-100 text-amber-800 text-xs font-bold px-2.5 py-1 rounded-full border border-amber-300 animate-pulse">⏸️ พักคิวไว้</span>`;
+                    } else {
+                        statusCell = `<span class="inline-flex items-center gap-1 bg-green-100 text-green-700 text-xs font-bold px-2.5 py-1 rounded-full border border-green-300">🟢 พร้อมเรียก</span>`;
+                    }
+
+                    // 🌟 ปุ่ม Action กดเรียกคิว
+                    let actionCell = "";
+                    if (isBusy) {
+                        actionCell = `<button disabled class="bg-gray-300 text-gray-500 text-sm font-bold py-1.5 px-4 rounded-lg cursor-not-allowed">⏳ ไม่พร้อม</button>`;
+                    } else if (isHold) {
+                        actionCell = `<button onclick="callQueue('${p.queue_number}')" class="bg-amber-600 hover:bg-amber-700 text-white text-sm font-bold py-1.5 px-4 rounded-lg shadow transition flex items-center justify-center gap-1 mx-auto">🔊 เรียกคิวคืน</button>`;
+                    } else {
+                        actionCell = `<button onclick="callQueue('${p.queue_number}')" class="bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold py-1.5 px-4 rounded-lg shadow transition flex items-center justify-center gap-1 mx-auto">🔊 กดเรียกคิว</button>`;
+                    }
+
+                    // ไฮไลต์แถวสีส้มอ่อนกรณีคิวโดน Hold
+                    const rowBg = isHold ? 'bg-amber-50/80 border-l-4 border-l-amber-500' : 'hover:bg-slate-50';
+
+                    return `
+                        <tr class="${rowBg} transition ${isBusy ? 'opacity-60' : ''}">
+                            <td class="p-3 text-center">${typeBadge}</td>
+                            <td class="p-3 font-bold ${isA ? 'text-blue-600' : 'text-amber-600'} font-mono text-lg">${p.queue_number}</td>
+                            <td class="p-3 text-gray-700 font-medium">${p.name}</td>
+                            <td class="p-3 text-center">${statusCell}</td>
+                            <td class="p-3 text-center">${actionCell}</td>
+                        </tr>
+                    `;
+                }).join('');
+            }
+
+            // 3. อัปเดตประวัติการตรวจสำเร็จ
+            const historyPatients = data.history_patients[stationName] || [];
+            const historyList = document.getElementById("history-list");
+            
+            if (historyPatients.length === 0) {
+                historyList.innerHTML = `<tr><td colspan="4" class="p-8 text-center text-gray-400">ยังไม่มีประวัติในจุดนี้</td></tr>`;
+            } else {
+                historyList.innerHTML = historyPatients.map(p => {
+                    const isA = p.queue_number.startsWith("A");
+                    const typeBadge = isA 
+                        ? `<span class="bg-gray-200 text-gray-600 font-bold px-2 py-0.5 rounded text-xs">A</span>`
+                        : `<span class="bg-gray-200 text-gray-600 font-bold px-2 py-0.5 rounded text-xs">W</span>`;
+
+                    return `
+                        <tr class="bg-slate-50">
+                            <td class="p-3 text-center">${typeBadge}</td>
+                            <td class="p-3 font-bold text-gray-500 font-mono">${p.queue_number}</td>
+                            <td class="p-3 text-gray-600">${p.name}</td>
+                            <td class="p-3 text-sm text-green-600 font-bold">✓ ผ่านจุดนี้แล้ว (${p.updated_at})</td>
+                        </tr>
+                    `;
+                }).join('');
+            }
+        };
+
+        // 🌟 เรียกคิว
+        async function callQueue(qNum) {
+            try {
+                const response = await fetch(`http://${serverIP}:8000/api/call-queue`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        queue_number: qNum,
+                        station_name: stationName
+                    })
+                });
+                
+                const data = await response.json();
+                if (data.status === "error") {
+                    alert(`⚠️ ไม่สามารถเรียกคิวได้:\n${data.message}`);
+                }
+            } catch (error) {
+                console.error("เกิดข้อผิดพลาดในการเชื่อมต่อ API:", error);
+                alert("❌ ไม่สามารถเชื่อมต่อกับ Server ได้");
+            }
+        }
+
+        // 🌟 กดพักคิวปัจจุบัน (Manual Hold)
+        async function holdQueueCurrent() {
+            if (activeQueueNumber === "-") return;
+            try {
+                const response = await fetch(`http://${serverIP}:8000/api/hold-queue`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        queue_number: activeQueueNumber,
+                        station_name: stationName
+                    })
+                });
+                const data = await response.json();
+                if (data.status === "success") {
+                    console.log(`พักคิวสำเร็จ: ${activeQueueNumber}`);
+                }
+            } catch (error) {
+                console.error("เกิดข้อผิดพลาดในการสั่งพักคิว:", error);
+            }
+        }
+
+        // 🔁 ฟังก์ชันเรียกคิวซ้ำ (Recall) — ใช้เมื่อคนไข้ไม่ได้ยิน/ไม่มาตามที่เรียกไปแล้ว
+        // ไม่เปลี่ยนสถานะคิว แค่สั่งให้จอ TV เล่นเสียงประกาศซ้ำ + กระพริบจอซ้ำ
+        async function recallQueueCurrent() {
+            if (activeQueueNumber === "-") return;
+            try {
+                const response = await fetch(`http://${serverIP}:8000/api/recall-queue`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        queue_number: activeQueueNumber,
+                        station_name: stationName
+                    })
+                });
+                const data = await response.json();
+                if (data.status !== "success") {
+                    alert(`⚠️ ไม่สามารถเรียกคิวซ้ำได้: ${data.detail || "โปรดลองใหม่"}`);
+                } else {
+                    console.log(`เรียกคิวซ้ำสำเร็จ: ${activeQueueNumber}`);
+                }
+            } catch (error) {
+                console.error("เกิดข้อผิดพลาดในการเรียกคิวซ้ำ:", error);
+                alert("❌ ไม่สามารถเชื่อมต่อกับ Server ได้");
+            }
+        }
+
+        // 🌟 ตรวจเสร็จสิ้น -> เปิด Modal กำหนดโปรแกรมตรวจ แทนที่จะปิดคิวตรงๆ
+        async function finishQueue() {
+            if (activeQueueNumber === "-") return;
+            await openProgramModal(activeQueueNumber);
+        }
+
+        // 🌟 เปิด Modal พร้อม prefill เช็คบ็อกซ์จากแผนตรวจเบื้องต้นที่ลงทะเบียนไว้
+        async function openProgramModal(qNum) {
+            document.getElementById("pm-queue-num").innerText = qNum;
+            document.getElementById("pm-patient-name").innerText = "";
+            document.querySelectorAll(".pm-checkbox").forEach(chk => chk.checked = false);
+            document.getElementById("pm-include-doctor").checked = true;
+
+            try {
+                const res = await fetch(`http://${serverIP}:8000/api/queue-plan/${qNum}`);
+                const data = await res.json();
+                if (data.status === "success") {
+                    document.getElementById("pm-patient-name").innerText = data.patient_name || "";
+                    const planned = (data.planned_stations || []).map(s => s.toLowerCase());
+                    document.querySelectorAll(".pm-checkbox").forEach(chk => {
+                        if (planned.includes(chk.value.toLowerCase())) chk.checked = true;
+                    });
+                    document.getElementById("pm-include-doctor").checked = planned.includes("doctor");
+                }
+            } catch (error) {
+                console.error("โหลดแผนตรวจเบื้องต้นไม่สำเร็จ (จะให้เลือกเองทั้งหมด):", error);
+            }
+
+            document.getElementById("program-modal").classList.remove("hidden");
+        }
+
+        function closeProgramModal() {
+            document.getElementById("program-modal").classList.add("hidden");
+        }
+
+        // 🌟 ยืนยันโปรแกรมตรวจ -> ปลดล็อกจุดที่เลือกจริง แล้วปิดคิว VitalSign ต่อ
+        async function confirmProgram() {
+            const qNum = document.getElementById("pm-queue-num").innerText;
+            if (!qNum) return;
+
+            const confirmBtn = document.getElementById("pm-confirm-btn");
+            confirmBtn.disabled = true;
+            confirmBtn.innerText = "⏳ กำลังบันทึก...";
+
+            const chosenStations = Array.from(document.querySelectorAll(".pm-checkbox:checked")).map(chk => chk.value);
+            const includeDoctor = document.getElementById("pm-include-doctor").checked;
+
+            try {
+                // 1) ยืนยันโปรแกรมตรวจ (ปลดล็อกจุดที่เลือก / ข้ามจุดที่ไม่เลือก)
+                await fetch(`http://${serverIP}:8000/api/assign-program`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        queue_number: qNum,
+                        stations: chosenStations,
+                        include_doctor: includeDoctor
+                    })
+                });
+
+                // 2) ปิดคิว VitalSign เพื่อส่งคนไข้เข้าสู่จุดตรวจที่กำหนดไว้
+                const response = await fetch(`http://${serverIP}:8000/api/finish-queue`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        queue_number: qNum,
+                        station_name: stationName
+                    })
+                });
+                const data = await response.json();
+                if (data.status === "success") {
+                    console.log(`กำหนดโปรแกรมตรวจ + ปิดคิว VitalSign สำเร็จ: ${qNum}`);
+                }
+            } catch (error) {
+                console.error("เกิดข้อผิดพลาดในการกำหนดโปรแกรมตรวจ/ปิดคิว:", error);
+                alert("❌ ไม่สามารถบันทึกโปรแกรมตรวจได้ กรุณาลองใหม่");
+            } finally {
+                confirmBtn.disabled = false;
+                confirmBtn.innerText = "✅ ยืนยันโปรแกรมตรวจ & ส่งคิวต่อ";
+                closeProgramModal();
+            }
+        }
+
+        // 🚨 ระบบแจ้งเตือน Popup เมื่อคิวถูกพัก (Hold) นานเกิน 15 นาที — เตือนซ้ำทุกๆ 15 นาทีที่เพิ่มขึ้น (30, 45, ...)
+        let holdAlertedBuckets = {};
+        let holdAlertQueue = [];
+
+        function checkHoldAlerts(waitingPatients) {
+            waitingPatients.forEach(p => {
+                if (p.status === 'Hold' && typeof p.wait_minutes === 'number') {
+                    const bucket = Math.floor(p.wait_minutes / 15);
+                    const key = p.queue_number;
+                    if (bucket >= 1 && (holdAlertedBuckets[key] || 0) < bucket) {
+                        holdAlertedBuckets[key] = bucket;
+                        holdAlertQueue.push({ queue_number: p.queue_number, name: p.name, wait_minutes: p.wait_minutes });
+                    }
+                }
+            });
+            const overlay = document.getElementById("hold-alert-overlay");
+            if (holdAlertQueue.length > 0 && overlay && overlay.classList.contains("hidden")) {
+                showNextHoldAlert();
+            }
+        }
+
+        function showNextHoldAlert() {
+            if (holdAlertQueue.length === 0) return;
+            const alertItem = holdAlertQueue.shift();
+            document.getElementById("hold-alert-message").innerHTML =
+                `คิว <b>${alertItem.queue_number}</b> (${alertItem.name || '-'}) ถูกพักไว้นาน <b>${alertItem.wait_minutes} นาที</b> แล้ว<br>กรุณาตรวจสอบ`;
+            document.getElementById("hold-alert-overlay").classList.remove("hidden");
+            playHoldAlertSound();
+        }
+
+        function dismissHoldAlert() {
+            document.getElementById("hold-alert-overlay").classList.add("hidden");
+            setTimeout(showNextHoldAlert, 400);
+        }
+
+        function playHoldAlertSound() {
+            try {
+                const ctx = new (window.AudioContext || window.webkitAudioContext)();
+                [880, 660].forEach((freq, i) => {
+                    const osc = ctx.createOscillator();
+                    const gain = ctx.createGain();
+                    osc.connect(gain);
+                    gain.connect(ctx.destination);
+                    osc.frequency.value = freq;
+                    gain.gain.setValueAtTime(0.2, ctx.currentTime + i * 0.25);
+                    osc.start(ctx.currentTime + i * 0.25);
+                    osc.stop(ctx.currentTime + i * 0.25 + 0.2);
+                });
+            } catch (e) { /* เบราว์เซอร์บางตัวอาจบล็อกเสียงถ้ายังไม่มีการคลิกหน้าเว็บมาก่อน */ }
+        }
+    </script>
+
+    <!-- 🚨 Popup แจ้งเตือนคิวรอนานเกินกำหนด (Hold เกิน 15 นาที) -->
+    <div id="hold-alert-overlay" class="hidden fixed inset-0 bg-black/60 flex items-center justify-center z-[9999] p-4">
+        <div class="bg-white rounded-2xl shadow-2xl p-6 max-w-sm w-full border-4 border-red-500">
+            <div class="text-center">
+                <div class="text-5xl mb-3 animate-bounce">🚨</div>
+                <h3 class="text-xl font-black text-red-600 mb-2">คิวรอนานเกินกำหนด!</h3>
+                <p id="hold-alert-message" class="text-gray-700 mb-5 leading-relaxed"></p>
+                <button onclick="dismissHoldAlert()" class="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-3 px-6 rounded-xl transition">
+                    รับทราบ
+                </button>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
